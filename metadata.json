@@ -1,0 +1,6 @@
+{
+  "name": "HMWG - Gestão de Enfermagem",
+  "description": "Sistema de gestão de enfermagem do Hospital Monsenhor Walfredo Gurgel com controle de leitos, setores, pacientes, atribuição de cuidados e impressão A4.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
