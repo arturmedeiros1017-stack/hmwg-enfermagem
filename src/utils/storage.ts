@@ -1,5 +1,6 @@
 import {
   INITIAL_BEDS,
+  INITIAL_EMPLOYEES,
   INITIAL_NURSES,
   INITIAL_PATIENTS,
   INITIAL_SECTORS,
@@ -9,6 +10,7 @@ import {
 } from '../data/initialData';
 import {
   Bed,
+  Employee,
   Nurse,
   Patient,
   Sector,
@@ -23,6 +25,7 @@ const STORAGE_KEYS = {
   PATIENTS: 'hmwg_nursing_patients_v1',
   NURSES: 'hmwg_nursing_nurses_v1',
   TECHNICIANS: 'hmwg_nursing_technicians_v1',
+  EMPLOYEES: 'hmwg_nursing_employees_v1',
   SHIFTS: 'hmwg_nursing_shifts_v1',
   VACANCIES: 'hmwg_nursing_vacancies_v1',
   CURRENT_USER: 'hmwg_nursing_current_user_v1',
@@ -63,6 +66,9 @@ export const Storage = {
   getTechnicians: (): Technician[] => getItem<Technician[]>(STORAGE_KEYS.TECHNICIANS, INITIAL_TECHNICIANS),
   saveTechnicians: (technicians: Technician[]) => setItem(STORAGE_KEYS.TECHNICIANS, technicians),
 
+  getEmployees: (): Employee[] => getItem<Employee[]>(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES),
+  saveEmployees: (employees: Employee[]) => setItem(STORAGE_KEYS.EMPLOYEES, employees),
+
   getShifts: (): ShiftConfig[] => getItem<ShiftConfig[]>(STORAGE_KEYS.SHIFTS, INITIAL_SHIFT_CONFIGS),
   saveShifts: (shifts: ShiftConfig[]) => setItem(STORAGE_KEYS.SHIFTS, shifts),
 
@@ -81,6 +87,7 @@ export const Storage = {
     localStorage.removeItem(STORAGE_KEYS.PATIENTS);
     localStorage.removeItem(STORAGE_KEYS.NURSES);
     localStorage.removeItem(STORAGE_KEYS.TECHNICIANS);
+    localStorage.removeItem(STORAGE_KEYS.EMPLOYEES);
     localStorage.removeItem(STORAGE_KEYS.SHIFTS);
     localStorage.removeItem(STORAGE_KEYS.VACANCIES);
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);

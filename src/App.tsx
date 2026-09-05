@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Bed,
   BedStatus,
+  Employee,
   Nurse,
   Patient,
   Sector,
@@ -21,6 +22,7 @@ import { CareAssignment } from './components/CareAssignment';
 import { PrintableA4Report } from './components/PrintableA4Report';
 import { VacancyRequests } from './components/VacancyRequests';
 import { ShiftManagement } from './components/ShiftManagement';
+import { EmployeeManagement } from './components/EmployeeManagement';
 import { PatientFormModal } from './components/PatientFormModal';
 import { LoginModal } from './components/LoginModal';
 import { HMWGLogo } from './components/HMWGLogo';
@@ -39,13 +41,14 @@ export default function App() {
   const [patients, setPatients] = useState<Patient[]>(() => Storage.getPatients());
   const [nurses, setNurses] = useState<Nurse[]>(() => Storage.getNurses());
   const [technicians, setTechnicians] = useState<Technician[]>(() => Storage.getTechnicians());
+  const [employees, setEmployees] = useState<Employee[]>(() => Storage.getEmployees());
   const [shifts, setShifts] = useState<ShiftConfig[]>(() => Storage.getShifts());
   const [vacancies, setVacancies] = useState<VacancyRequest[]>(() => Storage.getVacancies());
   const [currentUser, setCurrentUser] = useState<Nurse | null>(() => Storage.getCurrentUser());
   const [selectedSectorId, setSelectedSectorId] = useState<string>(() => Storage.getSelectedSectorId());
 
   // UI Navigation State
-  const [activeTab, setActiveTab] = useState<'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'impressao'>('mapa');
+  const [activeTab, setActiveTab] = useState<'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'impressao'>('mapa');
 
   // Modals States
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -60,6 +63,7 @@ export default function App() {
   useEffect(() => { Storage.savePatients(patients); }, [patients]);
   useEffect(() => { Storage.saveNurses(nurses); }, [nurses]);
   useEffect(() => { Storage.saveTechnicians(technicians); }, [technicians]);
+  useEffect(() => { Storage.saveEmployees(employees); }, [employees]);
   useEffect(() => { Storage.saveShifts(shifts); }, [shifts]);
   useEffect(() => { Storage.saveVacancies(vacancies); }, [vacancies]);
   useEffect(() => { Storage.saveCurrentUser(currentUser); }, [currentUser]);
@@ -187,19 +191,157 @@ export default function App() {
   };
 
   const handleAddNewTechnician = (nome: string, coren: string) => {
+    const techId = `tec-${Date.now()}`;
+    const formattedNome = nome.startsWith('Téc.') ? nome : `Téc. ${nome}`;
     const newTech: Technician = {
-      id: `tec-${Date.now()}`,
-      nome: nome.startsWith('Téc.') ? nome : `Téc. ${nome}`,
+      id: techId,
+      nome: formattedNome,
       coren,
       turno: 'Diurno (07h-19h)',
       presenteNoPlantao: true,
       setorId: currentSector.id,
     };
     setTechnicians((prev) => [...prev, newTech]);
+
+    // Sincroniza com employees
+    const newEmp: Employee = {
+      id: techId,
+      matricula: `SESAP-${Math.floor(100000 + Math.random() * 900000)}-${Math.floor(Math.random() * 9)}`,
+      nome: formattedNome,
+      cpf: '',
+      categoria: 'Técnico(a) de Enfermagem',
+      cargo: 'Técnico de Enfermagem',
+      conselhoTipo: 'COREN',
+      conselhoNumero: coren,
+      email: `${formattedNome.toLowerCase().replace(/[^a-z0-9]/g, '.')}@hmwg.rn.gov.br`,
+      telefone: '',
+      setorPadraoId: currentSector.id,
+      regimeContratual: 'Efetivo SESAP/RN',
+      turnoPadrao: 'Diurno (07h-19h)',
+      status: 'ATIVO',
+      dataAdmissao: new Date().toISOString().split('T')[0],
+    };
+    setEmployees((prev) => [newEmp, ...prev]);
   };
 
   const handleAddNewNurse = (newNurse: Nurse) => {
     setNurses((prev) => [...prev, newNurse]);
+
+    // Sincroniza com employees
+    setEmployees((prev) => {
+      if (prev.some((e) => e.id === newNurse.id)) return prev;
+      const newEmp: Employee = {
+        id: newNurse.id,
+        matricula: `SESAP-${Math.floor(100000 + Math.random() * 900000)}-${Math.floor(Math.random() * 9)}`,
+        nome: newNurse.nome,
+        cpf: '',
+        categoria: 'Enfermeiro(a)',
+        cargo: newNurse.cargo,
+        conselhoTipo: 'COREN',
+        conselhoNumero: newNurse.coren,
+        email: newNurse.email,
+        telefone: newNurse.telefone,
+        setorPadraoId: currentSector.id,
+        regimeContratual: 'Efetivo SESAP/RN',
+        turnoPadrao:
+          newNurse.turno === 'Noturno (19h-07h)'
+            ? 'Noturno (19h-07h)'
+            : newNurse.turno === 'Diurno (07h-19h)'
+            ? 'Diurno (07h-19h)'
+            : 'Ambos / Plantonista',
+        status: 'ATIVO',
+        dataAdmissao: new Date().toISOString().split('T')[0],
+        senha: newNurse.senha || 'enfermagem123',
+      };
+      return [newEmp, ...prev];
+    });
+  };
+
+  // Handlers for Employees (Quadro Geral de Funcionários)
+  const handleSaveEmployee = (savedEmp: Employee) => {
+    setEmployees((prev) => {
+      const idx = prev.findIndex((e) => e.id === savedEmp.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = savedEmp;
+        return copy;
+      }
+      return [savedEmp, ...prev];
+    });
+
+    // Sincronização com Enfermeiros (Nurse)
+    if (savedEmp.categoria === 'Enfermeiro(a)') {
+      const nurseData: Nurse = {
+        id: savedEmp.id,
+        nome: savedEmp.nome,
+        coren: savedEmp.conselhoNumero || 'COREN-RN',
+        cargo: (savedEmp.cargo as any) || 'Enfermeiro Assistencial',
+        email: savedEmp.email,
+        senha: savedEmp.senha || 'enfermagem123',
+        turno: savedEmp.turnoPadrao.includes('Noturno')
+          ? 'Noturno (19h-07h)'
+          : savedEmp.turnoPadrao.includes('Diurno')
+          ? 'Diurno (07h-19h)'
+          : 'Ambos',
+        telefone: savedEmp.telefone,
+      };
+      setNurses((prev) => {
+        const idx = prev.findIndex((n) => n.id === savedEmp.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = nurseData;
+          return copy;
+        }
+        return [...prev, nurseData];
+      });
+    }
+
+    // Sincronização com Técnicos (Technician)
+    if (savedEmp.categoria === 'Técnico(a) de Enfermagem') {
+      const techData: Technician = {
+        id: savedEmp.id,
+        nome: savedEmp.nome,
+        coren: savedEmp.conselhoNumero || 'COREN-RN',
+        turno: savedEmp.turnoPadrao.includes('Noturno')
+          ? 'Noturno (19h-07h)'
+          : 'Diurno (07h-19h)',
+        presenteNoPlantao: savedEmp.status === 'ATIVO',
+        setorId: savedEmp.setorPadraoId,
+        observacao: savedEmp.observacoes,
+      };
+      setTechnicians((prev) => {
+        const idx = prev.findIndex((t) => t.id === savedEmp.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = techData;
+          return copy;
+        }
+        return [...prev, techData];
+      });
+    }
+  };
+
+  const handleDeleteEmployee = (employeeId: string) => {
+    setEmployees((prev) => prev.filter((e) => e.id !== employeeId));
+    setNurses((prev) => prev.filter((n) => n.id !== employeeId));
+    setTechnicians((prev) => prev.filter((t) => t.id !== employeeId));
+  };
+
+  const handleToggleEmployeeStatus = (employeeId: string) => {
+    setEmployees((prev) =>
+      prev.map((e) => {
+        if (e.id === employeeId) {
+          const newStatus = e.status === 'ATIVO' ? 'INATIVO' : 'ATIVO';
+          return { ...e, status: newStatus };
+        }
+        return e;
+      })
+    );
+
+    // Se for técnico, atualiza a presença no plantão
+    setTechnicians((prev) =>
+      prev.map((t) => (t.id === employeeId ? { ...t, presenteNoPlantao: !t.presenteNoPlantao } : t))
+    );
   };
 
   return (
@@ -270,6 +412,16 @@ export default function App() {
             onAddNewNurse={handleAddNewNurse}
             onAddNewTechnician={(tech) => setTechnicians((prev) => [...prev, tech])}
             onToggleTechnicianPresence={handleToggleTechnicianPresence}
+          />
+        )}
+
+        {activeTab === 'funcionarios' && (
+          <EmployeeManagement
+            employees={employees}
+            sectors={sectors}
+            onSaveEmployee={handleSaveEmployee}
+            onDeleteEmployee={handleDeleteEmployee}
+            onToggleStatus={handleToggleEmployeeStatus}
           />
         )}
 

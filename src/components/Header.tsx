@@ -23,8 +23,8 @@ interface HeaderProps {
   currentUser: Nurse | null;
   currentShift: ShiftConfig;
   nurses: Nurse[];
-  activeTab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'impressao';
-  onSelectTab: (tab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'impressao') => void;
+  activeTab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'impressao';
+  onSelectTab: (tab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'impressao') => void;
   onOpenLogin: () => void;
 }
 
@@ -51,7 +51,8 @@ export const Header: React.FC<HeaderProps> = ({
     { key: 'mapa' as const, label: 'Mapa de Leitos', icon: Bed, color: 'sky' },
     { key: 'atribuicao' as const, label: 'Atribuição de Cuidados', icon: ClipboardList, color: 'cyan' },
     { key: 'vagas' as const, label: 'Solicitação de Vagas', icon: GitPullRequest, color: 'amber' },
-    { key: 'plantao' as const, label: 'Plantão & Equipe', icon: Users, color: 'indigo' },
+    { key: 'plantao' as const, label: 'Plantão & Escala', icon: Users, color: 'indigo' },
+    { key: 'funcionarios' as const, label: 'Funcionários', icon: UserCheck, color: 'blue' },
     { key: 'impressao' as const, label: 'Folha A4', icon: Printer, color: 'emerald' },
   ];
 
@@ -179,6 +180,7 @@ export const Header: React.FC<HeaderProps> = ({
                 cyan: isActive ? 'bg-cyan-100 text-cyan-900 border border-cyan-300' : 'text-slate-600 hover:bg-slate-100',
                 amber: isActive ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'text-slate-600 hover:bg-slate-100',
                 indigo: isActive ? 'bg-indigo-100 text-indigo-900 border border-indigo-300' : 'text-slate-600 hover:bg-slate-100',
+                blue: isActive ? 'bg-sky-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100',
                 emerald: isActive ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100',
               };
               return (
@@ -266,6 +268,7 @@ export const Header: React.FC<HeaderProps> = ({
                   cyan: isActive ? 'bg-cyan-100 text-cyan-900 border-cyan-300' : 'text-slate-600 bg-white border-slate-200',
                   amber: isActive ? 'bg-amber-100 text-amber-900 border-amber-300' : 'text-slate-600 bg-white border-slate-200',
                   indigo: isActive ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'text-slate-600 bg-white border-slate-200',
+                  blue: isActive ? 'bg-sky-700 text-white border-sky-700' : 'text-slate-700 bg-white border-slate-200',
                   emerald: isActive ? 'bg-emerald-600 text-white border-emerald-600' : 'text-emerald-800 bg-emerald-50 border-emerald-300',
                 };
                 return (

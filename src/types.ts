@@ -141,6 +141,54 @@ export interface Technician {
   observacao?: string;
 }
 
+export type EmployeeCategory =
+  | 'Enfermeiro(a)'
+  | 'Técnico(a) de Enfermagem'
+  | 'Auxiliar de Enfermagem'
+  | 'Médico(a)'
+  | 'Fisioterapeuta'
+  | 'Apoio / Administrativo';
+
+export type EmployeeStatus = 'ATIVO' | 'INATIVO' | 'LICENCA' | 'AFASTADO';
+
+export type ContractType =
+  | 'Efetivo SESAP/RN'
+  | 'Contrato Temporário'
+  | 'Cooperado'
+  | 'Residente'
+  | 'Terceirizado';
+
+export type CouncilType = 'COREN' | 'CRM' | 'CREFITO' | 'OUTRO' | 'NÃO APLICÁVEL';
+
+export type EmployeeTurn =
+  | 'Diurno (07h-19h)'
+  | 'Noturno (19h-07h)'
+  | 'Diarista 30h'
+  | 'Diarista 40h'
+  | 'Ambos / Plantonista';
+
+export interface Employee {
+  id: string;
+  matricula: string;
+  nome: string;
+  cpf: string;
+  categoria: EmployeeCategory;
+  cargo: string;
+  conselhoTipo: CouncilType;
+  conselhoNumero: string;
+  email: string;
+  telefone: string;
+  setorPadraoId: string;
+  regimeContratual: ContractType;
+  turnoPadrao: EmployeeTurn;
+  status: EmployeeStatus;
+  dataAdmissao: string;
+  fotoUrl?: string;
+  observacoes?: string;
+  senha?: string;
+}
+
+
 export interface VacancyRequest {
   id: string;
   pacienteNome: string;
