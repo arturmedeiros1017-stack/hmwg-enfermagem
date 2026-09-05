@@ -28,13 +28,14 @@ export const HMWGLogo: React.FC<HMWGLogoProps> = ({
     <div className={`inline-flex items-center gap-3 ${className}`}>
       <div className={`relative flex-shrink-0 ${currentSize} rounded-full overflow-hidden shadow-sm border border-cyan-100 bg-white p-0.5`}>
         <img
-          src="/hmwg-logo.png"
+          src="/hmwg-logo.webp"
           alt="Hospital Monsenhor Walfredo Gurgel"
           className="w-full h-full object-contain rounded-full"
           onError={(e) => {
-            // Fallback to jpg or svg if png fails
             const target = e.currentTarget;
-            if (target.src.endsWith('.png')) {
+            if (target.src.endsWith('.webp')) {
+              target.src = '/hmwg-logo.png';
+            } else if (target.src.endsWith('.png')) {
               target.src = '/hmwg-logo.jpg';
             }
           }}
