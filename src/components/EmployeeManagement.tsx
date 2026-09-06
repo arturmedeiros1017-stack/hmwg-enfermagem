@@ -28,9 +28,9 @@ import {
 interface EmployeeManagementProps {
   employees: Employee[];
   sectors: Sector[];
-  onSaveEmployee: (employee: Employee) => void;
-  onDeleteEmployee: (employeeId: string) => void;
-  onToggleStatus: (employeeId: string) => void;
+  onSaveEmployee: (employee: Employee) => void | Promise<void>;
+  onDeleteEmployee: (employeeId: string) => void | Promise<void>;
+  onToggleStatus: (employeeId: string) => void | Promise<void>;
 }
 
 export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({

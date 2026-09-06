@@ -50,8 +50,28 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<Nurse | null>(() => Storage.getCurrentUser());
   const [selectedSectorId, setSelectedSectorId] = useState<string>(() => Storage.getSelectedSectorId());
 
-  // UI Navigation State
-  const [activeTab, setActiveTab] = useState<'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao'>('mapa');
+  // UI Navigation State com persistência no LocalStorage
+  const [activeTab, setActiveTab] = useState<'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao'>(() => {
+    try {
+      const saved = localStorage.getItem('hmwg_active_tab');
+      const validTabs = ['mapa', 'atribuicao', 'vagas', 'plantao', 'funcionarios', 'setores', 'impressao'];
+      if (saved && validTabs.includes(saved)) {
+        return saved as any;
+      }
+    } catch {
+      // Ignora erro no localStorage
+    }
+    return 'mapa';
+  });
+
+  // Salva aba ativa sempre que ela mudar
+  useEffect(() => {
+    try {
+      localStorage.setItem('hmwg_active_tab', activeTab);
+    } catch (e) {
+      console.warn('Erro ao persistir aba ativa:', e);
+    }
+  }, [activeTab]);
 
   // Modals States
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -81,6 +101,7 @@ export default function App() {
   });
   const isInitialSyncDone = useRef(false);
   const isPushing = useRef(false);
+  const lastLocalMutationTime = useRef<number>(0);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setSyncToast({ show: true, message, type });
@@ -92,6 +113,13 @@ export default function App() {
   // Pull latest data from Google Sheets
   const pullFromCloud = useCallback(async (isSilent = false) => {
     if (!Storage.isUsingGoogleSheets() || isPushing.current) return;
+
+    // Se houve alteração local recente (últimos 15 segundos) e for um pull em segundo plano,
+    // não sobrescrever para evitar desfazer edições do usuário em andamento
+    if (Date.now() - lastLocalMutationTime.current < 15000 && isSilent) {
+      return;
+    }
+
     if (!isSilent) setIsSyncing(true);
 
     try {
@@ -472,20 +500,30 @@ export default function App() {
   };
 
   // Handlers for Employees (Quadro Geral de Funcionários)
-  const handleSaveEmployee = (savedEmp: Employee) => {
+  const handleSaveEmployee = async (savedEmp: Employee) => {
+    lastLocalMutationTime.current = Date.now();
+    isPushing.current = true;
+
+    // 1. Atualizar e salvar imediatamente localmente
+    let updatedEmployees: Employee[] = [];
     setEmployees((prev) => {
       const idx = prev.findIndex((e) => e.id === savedEmp.id);
       if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = savedEmp;
-        return copy;
+        updatedEmployees = [...prev];
+        updatedEmployees[idx] = savedEmp;
+      } else {
+        updatedEmployees = [savedEmp, ...prev];
       }
-      return [savedEmp, ...prev];
+      Storage.saveEmployees(updatedEmployees);
+      return updatedEmployees;
     });
+
+    let nurseDataToSync: Nurse | null = null;
+    let techDataToSync: Technician | null = null;
 
     // Sincronização com Enfermeiros (Nurse)
     if (savedEmp.categoria === 'Enfermeiro(a)') {
-      const nurseData: Nurse = {
+      nurseDataToSync = {
         id: savedEmp.id,
         nome: savedEmp.nome,
         coren: savedEmp.conselhoNumero || 'COREN-RN',
@@ -501,18 +539,16 @@ export default function App() {
       };
       setNurses((prev) => {
         const idx = prev.findIndex((n) => n.id === savedEmp.id);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = nurseData;
-          return copy;
-        }
-        return [...prev, nurseData];
+        const copy = idx >= 0 ? [...prev] : [...prev, nurseDataToSync!];
+        if (idx >= 0) copy[idx] = nurseDataToSync!;
+        Storage.saveNurses(copy);
+        return copy;
       });
     }
 
     // Sincronização com Técnicos (Technician)
     if (savedEmp.categoria === 'Técnico(a) de Enfermagem') {
-      const techData: Technician = {
+      techDataToSync = {
         id: savedEmp.id,
         nome: savedEmp.nome,
         coren: savedEmp.conselhoNumero || 'COREN-RN',
@@ -525,37 +561,97 @@ export default function App() {
       };
       setTechnicians((prev) => {
         const idx = prev.findIndex((t) => t.id === savedEmp.id);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = techData;
-          return copy;
-        }
-        return [...prev, techData];
+        const copy = idx >= 0 ? [...prev] : [...prev, techDataToSync!];
+        if (idx >= 0) copy[idx] = techDataToSync!;
+        Storage.saveTechnicians(copy);
+        return copy;
       });
+    }
+
+    // 2. Salvar diretamente no Google Sheets de forma atômica e rápida
+    try {
+      if (Storage.isUsingGoogleSheets()) {
+        await Storage.saveEmployeeCloud(savedEmp);
+        if (nurseDataToSync) await Storage.saveNurseCloud(nurseDataToSync);
+        if (techDataToSync) await Storage.saveTechnicianCloud(techDataToSync);
+        setLastSyncTime(new Date());
+      }
+      showToast(`Cadastro de ${savedEmp.nome} salvo com sucesso!`, 'success');
+    } catch (err) {
+      console.error('Erro ao salvar na nuvem Google Sheets:', err);
+      showToast(`Salvo localmente! Sincronização em segundo plano...`, 'success');
+    } finally {
+      isPushing.current = false;
     }
   };
 
-  const handleDeleteEmployee = (employeeId: string) => {
-    setEmployees((prev) => prev.filter((e) => e.id !== employeeId));
-    setNurses((prev) => prev.filter((n) => n.id !== employeeId));
-    setTechnicians((prev) => prev.filter((t) => t.id !== employeeId));
+  const handleDeleteEmployee = async (employeeId: string) => {
+    lastLocalMutationTime.current = Date.now();
+    isPushing.current = true;
+
+    setEmployees((prev) => {
+      const updated = prev.filter((e) => e.id !== employeeId);
+      Storage.saveEmployees(updated);
+      return updated;
+    });
+    setNurses((prev) => {
+      const updated = prev.filter((n) => n.id !== employeeId);
+      Storage.saveNurses(updated);
+      return updated;
+    });
+    setTechnicians((prev) => {
+      const updated = prev.filter((t) => t.id !== employeeId);
+      Storage.saveTechnicians(updated);
+      return updated;
+    });
+
+    try {
+      if (Storage.isUsingGoogleSheets()) {
+        await Storage.deleteEmployeeCloud(employeeId);
+      }
+      showToast('Funcionário removido com sucesso!', 'success');
+    } catch (err) {
+      console.error('Erro ao excluir funcionário na nuvem:', err);
+    } finally {
+      isPushing.current = false;
+    }
   };
 
-  const handleToggleEmployeeStatus = (employeeId: string) => {
-    setEmployees((prev) =>
-      prev.map((e) => {
+  const handleToggleEmployeeStatus = async (employeeId: string) => {
+    lastLocalMutationTime.current = Date.now();
+    let updatedEmp: Employee | null = null;
+
+    setEmployees((prev) => {
+      const updated = prev.map((e) => {
         if (e.id === employeeId) {
           const newStatus = e.status === 'ATIVO' ? 'INATIVO' : 'ATIVO';
-          return { ...e, status: newStatus };
+          updatedEmp = { ...e, status: newStatus };
+          return updatedEmp;
         }
         return e;
-      })
-    );
+      });
+      Storage.saveEmployees(updated);
+      return updated;
+    });
 
     // Se for técnico, atualiza a presença no plantão
-    setTechnicians((prev) =>
-      prev.map((t) => (t.id === employeeId ? { ...t, presenteNoPlantao: !t.presenteNoPlantao } : t))
-    );
+    setTechnicians((prev) => {
+      const updated = prev.map((t) =>
+        t.id === employeeId ? { ...t, presenteNoPlantao: !t.presenteNoPlantao } : t
+      );
+      Storage.saveTechnicians(updated);
+      return updated;
+    });
+
+    if (updatedEmp) {
+      try {
+        if (Storage.isUsingGoogleSheets()) {
+          await Storage.saveEmployeeCloud(updatedEmp);
+        }
+      } catch (err) {
+        console.error('Erro ao atualizar status do funcionário na nuvem:', err);
+      }
+    }
   };
 
   return (
@@ -566,7 +662,7 @@ export default function App() {
         selectedSectorId={selectedSectorId}
         onSelectSector={(id) => {
           setSelectedSectorId(id);
-          setActiveTab('mapa');
+          // Permanece na mesma aba que o usuário estiver usando (não força reset para 'mapa')
         }}
         currentUser={currentUser}
         currentShift={currentShift}

@@ -20,12 +20,13 @@ import {
   Sparkles,
   Save,
   FileCheck,
+  RefreshCw,
 } from 'lucide-react';
 
 interface EmployeeFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (employee: Employee) => void;
+  onSave: (employee: Employee) => void | Promise<void>;
   employeeToEdit?: Employee | null;
   sectors: Sector[];
 }
@@ -38,6 +39,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   sectors,
 }) => {
   const isEditing = Boolean(employeeToEdit);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Form Fields
   const [matricula, setMatricula] = useState('');
@@ -63,6 +65,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   // Reset or initialize on open/change
   useEffect(() => {
     if (isOpen) {
+      setIsSaving(false);
       if (employeeToEdit) {
         setMatricula(employeeToEdit.matricula || '');
         setNome(employeeToEdit.nome || '');
@@ -143,7 +146,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     setMatricula(`SESAP-${randomNum}-${randomDigit}`);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome.trim() || !matricula.trim()) {
       alert('Por favor, informe ao menos o Nome Completo e a Matrícula do funcionário.');
@@ -185,8 +188,16 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       senha: senha.trim() || 'hmwg123',
     };
 
-    onSave(savedEmployee);
-    onClose();
+    try {
+      setIsSaving(true);
+      await onSave(savedEmployee);
+      onClose();
+    } catch (err) {
+      console.error('Erro ao salvar funcionário:', err);
+      alert('Ocorreu um erro ao salvar o funcionário. Por favor, tente novamente.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -558,16 +569,27 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                disabled={isSaving}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="flex items-center gap-1.5 px-5 py-2 bg-sky-800 hover:bg-sky-700 text-white font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+                disabled={isSaving}
+                className="flex items-center gap-1.5 px-5 py-2 bg-sky-800 hover:bg-sky-700 active:bg-sky-900 disabled:opacity-60 text-white font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
-                <Save className="w-4 h-4" />
-                {isEditing ? 'Salvar Alterações' : 'Concluir Cadastro'}
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>{isEditing ? 'Salvar Alterações' : 'Concluir Cadastro'}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -158,16 +158,25 @@ async function syncToGoogleSheets(data: {
   if (!USE_GOOGLE_SHEETS) return;
 
   try {
-    const promises: Promise<void>[] = [];
-    if (data.sectors && data.sectors.length > 0) promises.push(saveAllSectors(data.sectors));
-    if (data.beds && data.beds.length > 0) promises.push(saveAllBeds(data.beds));
-    if (data.patients) promises.push(saveAllPatients(data.patients));
-    if (data.nurses && data.nurses.length > 0) promises.push(saveAllNurses(data.nurses));
-    if (data.technicians && data.technicians.length > 0) promises.push(saveAllTechnicians(data.technicians));
-    if (data.employees && data.employees.length > 0) promises.push(saveAllEmployees(data.employees));
-    if (data.shifts && data.shifts.length > 0) promises.push(saveAllShifts(data.shifts));
-    if (data.vacancies) promises.push(saveAllVacancies(data.vacancies));
-    await Promise.all(promises);
+    const tasks: (() => Promise<void>)[] = [];
+    if (data.sectors && data.sectors.length > 0) tasks.push(() => saveAllSectors(data.sectors!));
+    if (data.beds && data.beds.length > 0) tasks.push(() => saveAllBeds(data.beds!));
+    if (data.patients) tasks.push(() => saveAllPatients(data.patients!));
+    if (data.nurses && data.nurses.length > 0) tasks.push(() => saveAllNurses(data.nurses!));
+    if (data.technicians && data.technicians.length > 0) tasks.push(() => saveAllTechnicians(data.technicians!));
+    if (data.employees && data.employees.length > 0) tasks.push(() => saveAllEmployees(data.employees!));
+    if (data.shifts && data.shifts.length > 0) tasks.push(() => saveAllShifts(data.shifts!));
+    if (data.vacancies) tasks.push(() => saveAllVacancies(data.vacancies!));
+
+    // Execução sequencial resiliente para evitar colisão de lock no Google Apps Script
+    for (const task of tasks) {
+      try {
+        await task();
+      } catch (itemErr) {
+        console.warn('Aviso ao sincronizar item para Google Sheets:', itemErr);
+      }
+    }
+
     saveLocally(STORAGE_KEYS.SYNC_STATUS, { lastSync: new Date().toISOString() });
   } catch (error) {
     console.error('Erro ao sincronizar para Google Sheets:', error);
@@ -184,6 +193,20 @@ export const Storage = {
 
   // Sincronizar para Google Sheets
   syncToGoogleSheets,
+
+  // Operações diretas de nuvem para funcionários (rápido e atômico)
+  saveEmployeeCloud: async (emp: Employee) => {
+    if (USE_GOOGLE_SHEETS) await saveEmployee(emp);
+  },
+  deleteEmployeeCloud: async (id: string) => {
+    if (USE_GOOGLE_SHEETS) await deleteEmployee(id);
+  },
+  saveNurseCloud: async (nurse: Nurse) => {
+    if (USE_GOOGLE_SHEETS) await saveNurse(nurse);
+  },
+  saveTechnicianCloud: async (tech: Technician) => {
+    if (USE_GOOGLE_SHEETS) await saveTechnician(tech);
+  },
 
   // Verificar status da sincronização
   getSyncStatus: () => getItem<{ lastSync?: string }>(STORAGE_KEYS.SYNC_STATUS, {}),
