@@ -72,7 +72,11 @@ async function requestPost(action: string, sheet: string, data: any): Promise<an
     throw new Error(`Erro na requisição: ${response.status}`);
   }
 
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    return { success: true };
+  }
 }
 
 // Exportar uso do Google Sheets

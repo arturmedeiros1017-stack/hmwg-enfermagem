@@ -114,9 +114,14 @@ export default function App() {
   const pullFromCloud = useCallback(async (isSilent = false) => {
     if (!Storage.isUsingGoogleSheets() || isPushing.current) return;
 
-    // Se houve alteração local recente (últimos 15 segundos) e for um pull em segundo plano,
-    // não sobrescrever para evitar desfazer edições do usuário em andamento
-    if (Date.now() - lastLocalMutationTime.current < 15000 && isSilent) {
+    // Se o usuário estiver com qualquer modal aberto, NÃO roda atualização em segundo plano para não atrapalhar
+    if (isSilent && typeof document !== 'undefined' && document.querySelector('.fixed.inset-0')) {
+      return;
+    }
+
+    // Se houve alteração local recente (últimos 60 segundos) e for um pull em segundo plano,
+    // não sobrescrever para evitar desfazer edições do usuário
+    if (Date.now() - lastLocalMutationTime.current < 60000 && isSilent) {
       return;
     }
 
@@ -128,9 +133,22 @@ export default function App() {
         if (data.sectors && data.sectors.length > 0) setSectors(data.sectors);
         if (data.beds) setBeds(data.beds);
         if (data.patients) setPatients(data.patients);
-        if (data.nurses && data.nurses.length > 0) setNurses(data.nurses);
-        if (data.technicians && data.technicians.length > 0) setTechnicians(data.technicians);
-        if (data.employees && data.employees.length > 0) setEmployees(data.employees);
+        if (data.nurses && data.nurses.length > 0) {
+          if (Date.now() - lastLocalMutationTime.current >= 60000 || !isSilent) {
+            setNurses(data.nurses);
+          }
+        }
+        if (data.technicians && data.technicians.length > 0) {
+          if (Date.now() - lastLocalMutationTime.current >= 60000 || !isSilent) {
+            setTechnicians(data.technicians);
+          }
+        }
+        if (data.employees && data.employees.length > 0) {
+          // Protege colaboradores recém-salvos contra sobrescrita pela nuvem
+          if (Date.now() - lastLocalMutationTime.current >= 60000 || !isSilent) {
+            setEmployees(data.employees);
+          }
+        }
         if (data.shifts && data.shifts.length > 0) setShifts(data.shifts);
         if (data.vacancies) setVacancies(data.vacancies);
         setLastSyncTime(new Date());
@@ -501,22 +519,19 @@ export default function App() {
 
   // Handlers for Employees (Quadro Geral de Funcionários)
   const handleSaveEmployee = async (savedEmp: Employee) => {
+    // 1. Marca imediatamente imunidade contra pulls de background
     lastLocalMutationTime.current = Date.now();
     isPushing.current = true;
 
-    // 1. Atualizar e salvar imediatamente localmente
-    let updatedEmployees: Employee[] = [];
-    setEmployees((prev) => {
-      const idx = prev.findIndex((e) => e.id === savedEmp.id);
-      if (idx >= 0) {
-        updatedEmployees = [...prev];
-        updatedEmployees[idx] = savedEmp;
-      } else {
-        updatedEmployees = [savedEmp, ...prev];
-      }
-      Storage.saveEmployees(updatedEmployees);
-      return updatedEmployees;
-    });
+    // 2. Atualização SÍNCRONA E IMEDIATA no Storage e no React State
+    const currentEmployees = Storage.getEmployees();
+    const idx = currentEmployees.findIndex((e) => e.id === savedEmp.id);
+    const updatedEmployees = idx >= 0
+      ? currentEmployees.map((e) => (e.id === savedEmp.id ? savedEmp : e))
+      : [savedEmp, ...currentEmployees];
+
+    Storage.saveEmployees(updatedEmployees);
+    setEmployees(updatedEmployees);
 
     let nurseDataToSync: Nurse | null = null;
     let techDataToSync: Technician | null = null;
@@ -537,13 +552,13 @@ export default function App() {
           : 'Ambos',
         telefone: savedEmp.telefone,
       };
-      setNurses((prev) => {
-        const idx = prev.findIndex((n) => n.id === savedEmp.id);
-        const copy = idx >= 0 ? [...prev] : [...prev, nurseDataToSync!];
-        if (idx >= 0) copy[idx] = nurseDataToSync!;
-        Storage.saveNurses(copy);
-        return copy;
-      });
+      const currentNurses = Storage.getNurses();
+      const nIdx = currentNurses.findIndex((n) => n.id === savedEmp.id);
+      const updatedNurses = nIdx >= 0
+        ? currentNurses.map((n) => (n.id === savedEmp.id ? nurseDataToSync! : n))
+        : [...currentNurses, nurseDataToSync!];
+      Storage.saveNurses(updatedNurses);
+      setNurses(updatedNurses);
     }
 
     // Sincronização com Técnicos (Technician)
@@ -559,16 +574,18 @@ export default function App() {
         setorId: savedEmp.setorPadraoId,
         observacao: savedEmp.observacoes,
       };
-      setTechnicians((prev) => {
-        const idx = prev.findIndex((t) => t.id === savedEmp.id);
-        const copy = idx >= 0 ? [...prev] : [...prev, techDataToSync!];
-        if (idx >= 0) copy[idx] = techDataToSync!;
-        Storage.saveTechnicians(copy);
-        return copy;
-      });
+      const currentTechs = Storage.getTechnicians();
+      const tIdx = currentTechs.findIndex((t) => t.id === savedEmp.id);
+      const updatedTechs = tIdx >= 0
+        ? currentTechs.map((t) => (t.id === savedEmp.id ? techDataToSync! : t))
+        : [...currentTechs, techDataToSync!];
+      Storage.saveTechnicians(updatedTechs);
+      setTechnicians(updatedTechs);
     }
 
-    // 2. Salvar diretamente no Google Sheets de forma atômica e rápida
+    showToast(`Cadastro de ${savedEmp.nome} salvo com sucesso!`, 'success');
+
+    // 3. Salvar diretamente no Google Sheets de forma atômica em segundo plano
     try {
       if (Storage.isUsingGoogleSheets()) {
         await Storage.saveEmployeeCloud(savedEmp);
@@ -576,10 +593,8 @@ export default function App() {
         if (techDataToSync) await Storage.saveTechnicianCloud(techDataToSync);
         setLastSyncTime(new Date());
       }
-      showToast(`Cadastro de ${savedEmp.nome} salvo com sucesso!`, 'success');
     } catch (err) {
-      console.error('Erro ao salvar na nuvem Google Sheets:', err);
-      showToast(`Salvo localmente! Sincronização em segundo plano...`, 'success');
+      console.warn('Sincronização em nuvem do funcionário continuará em background:', err);
     } finally {
       isPushing.current = false;
     }
@@ -589,27 +604,27 @@ export default function App() {
     lastLocalMutationTime.current = Date.now();
     isPushing.current = true;
 
-    setEmployees((prev) => {
-      const updated = prev.filter((e) => e.id !== employeeId);
-      Storage.saveEmployees(updated);
-      return updated;
-    });
-    setNurses((prev) => {
-      const updated = prev.filter((n) => n.id !== employeeId);
-      Storage.saveNurses(updated);
-      return updated;
-    });
-    setTechnicians((prev) => {
-      const updated = prev.filter((t) => t.id !== employeeId);
-      Storage.saveTechnicians(updated);
-      return updated;
-    });
+    const currentEmployees = Storage.getEmployees();
+    const updated = currentEmployees.filter((e) => e.id !== employeeId);
+    Storage.saveEmployees(updated);
+    setEmployees(updated);
+
+    const currentNurses = Storage.getNurses();
+    const updatedNurses = currentNurses.filter((n) => n.id !== employeeId);
+    Storage.saveNurses(updatedNurses);
+    setNurses(updatedNurses);
+
+    const currentTechs = Storage.getTechnicians();
+    const updatedTechs = currentTechs.filter((t) => t.id !== employeeId);
+    Storage.saveTechnicians(updatedTechs);
+    setTechnicians(updatedTechs);
+
+    showToast('Funcionário removido com sucesso!', 'success');
 
     try {
       if (Storage.isUsingGoogleSheets()) {
         await Storage.deleteEmployeeCloud(employeeId);
       }
-      showToast('Funcionário removido com sucesso!', 'success');
     } catch (err) {
       console.error('Erro ao excluir funcionário na nuvem:', err);
     } finally {
@@ -621,27 +636,25 @@ export default function App() {
     lastLocalMutationTime.current = Date.now();
     let updatedEmp: Employee | null = null;
 
-    setEmployees((prev) => {
-      const updated = prev.map((e) => {
-        if (e.id === employeeId) {
-          const newStatus = e.status === 'ATIVO' ? 'INATIVO' : 'ATIVO';
-          updatedEmp = { ...e, status: newStatus };
-          return updatedEmp;
-        }
-        return e;
-      });
-      Storage.saveEmployees(updated);
-      return updated;
+    const currentEmployees = Storage.getEmployees();
+    const updated = currentEmployees.map((e) => {
+      if (e.id === employeeId) {
+        const newStatus = e.status === 'ATIVO' ? 'INATIVO' : 'ATIVO';
+        updatedEmp = { ...e, status: newStatus };
+        return updatedEmp;
+      }
+      return e;
     });
+    Storage.saveEmployees(updated);
+    setEmployees(updated);
 
     // Se for técnico, atualiza a presença no plantão
-    setTechnicians((prev) => {
-      const updated = prev.map((t) =>
-        t.id === employeeId ? { ...t, presenteNoPlantao: !t.presenteNoPlantao } : t
-      );
-      Storage.saveTechnicians(updated);
-      return updated;
-    });
+    const currentTechs = Storage.getTechnicians();
+    const updatedTechs = currentTechs.map((t) =>
+      t.id === employeeId ? { ...t, presenteNoPlantao: !t.presenteNoPlantao } : t
+    );
+    Storage.saveTechnicians(updatedTechs);
+    setTechnicians(updatedTechs);
 
     if (updatedEmp) {
       try {

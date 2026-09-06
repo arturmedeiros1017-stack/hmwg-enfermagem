@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Employee,
   EmployeeCategory,
@@ -62,10 +62,20 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   // Form Tab
   const [activeSection, setActiveSection] = useState<'pessoal' | 'funcional' | 'lotacao'>('pessoal');
 
-  // Reset or initialize on open/change
+  // Refs de controle para NUNCA resetar o formulário enquanto o usuário estiver editando
+  const prevIsOpenRef = useRef(false);
+  const currentEditingIdRef = useRef<string | null>(null);
+
+  // Reset or initialize ONLY on fresh open or when target employee changes
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !prevIsOpenRef.current;
+    const targetId = employeeToEdit ? employeeToEdit.id : 'novo';
+    const employeeChanged = isOpen && currentEditingIdRef.current !== targetId;
+
+    if (justOpened || employeeChanged) {
+      currentEditingIdRef.current = targetId;
       setIsSaving(false);
+
       if (employeeToEdit) {
         setMatricula(employeeToEdit.matricula || '');
         setNome(employeeToEdit.nome || '');
@@ -104,9 +114,17 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         setObservacoes('');
         setSenha('enfermagem123');
       }
-      setActiveSection('pessoal');
+
+      if (justOpened) {
+        setActiveSection('pessoal');
+      }
     }
-  }, [isOpen, employeeToEdit, sectors]);
+
+    prevIsOpenRef.current = isOpen;
+    if (!isOpen) {
+      currentEditingIdRef.current = null;
+    }
+  }, [isOpen, employeeToEdit?.id]);
 
   // Adjust defaults when category changes
   const handleCategoryChange = (newCat: EmployeeCategory) => {
