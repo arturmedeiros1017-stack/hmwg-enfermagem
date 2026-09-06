@@ -23,6 +23,7 @@ import { PrintableA4Report } from './components/PrintableA4Report';
 import { VacancyRequests } from './components/VacancyRequests';
 import { ShiftManagement } from './components/ShiftManagement';
 import { EmployeeManagement } from './components/EmployeeManagement';
+import { SectorManagement } from './components/SectorManagement';
 import { PatientFormModal } from './components/PatientFormModal';
 import { LoginModal } from './components/LoginModal';
 import { HMWGLogo } from './components/HMWGLogo';
@@ -32,6 +33,7 @@ import {
   HeartHandshake,
   FileSpreadsheet,
   Building,
+  Building2,
 } from 'lucide-react';
 
 export default function App() {
@@ -48,7 +50,7 @@ export default function App() {
   const [selectedSectorId, setSelectedSectorId] = useState<string>(() => Storage.getSelectedSectorId());
 
   // UI Navigation State
-  const [activeTab, setActiveTab] = useState<'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'impressao'>('mapa');
+  const [activeTab, setActiveTab] = useState<'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao'>('mapa');
 
   // Modals States
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -257,6 +259,112 @@ export default function App() {
     });
   };
 
+  // Handlers for Sectors
+  const handleSaveSector = (sector: Sector) => {
+    setSectors((prev) => {
+      const idx = prev.findIndex((s) => s.id === sector.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = sector;
+        return copy;
+      }
+      return [...prev, sector];
+    });
+  };
+
+  const handleDeleteSector = (sectorId: string) => {
+    setBeds((prev) => prev.filter((b) => b.setorId !== sectorId));
+    setSectors((prev) => prev.filter((s) => s.id !== sectorId));
+    if (selectedSectorId === sectorId) {
+      setSelectedSectorId(sectors.find((s) => s.id !== sectorId)?.id || '');
+    }
+  };
+
+  // Handlers for Beds (CRUD from SectorManagement)
+  const handleSaveBedFromSectorMgmt = (bed: Bed) => {
+    setBeds((prev) => {
+      const idx = prev.findIndex((b) => b.id === bed.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = bed;
+        return copy;
+      }
+      return [...prev, bed];
+    });
+  };
+
+  const handleDeleteBed = (bedId: string) => {
+    setBeds((prev) => prev.filter((b) => b.id !== bedId));
+    setPatients((prev) => prev.filter((p) => p.leitoId !== bedId));
+  };
+
+  // Handler for CSV Import
+  const handleImportCsv = (type: 'setores' | 'leitos' | 'pacientes', data: any[]) => {
+    if (type === 'setores') {
+      setSectors((prev) => {
+        const existingIds = new Set(prev.map((s) => s.id));
+        const newSectors = data
+          .filter((d) => !existingIds.has(d.id))
+          .map((d) => ({
+            id: d.id,
+            nome: d.nome,
+            sigla: d.sigla,
+            descricao: d.descricao,
+            cor: d.cor,
+            capacidadeTotal: parseInt(d.capacitatetotal || '10', 10) || 10,
+          }));
+        return [...prev, ...newSectors];
+      });
+    } else if (type === 'leitos') {
+      setBeds((prev) => {
+        const existingIds = new Set(prev.map((b) => b.id));
+        const newBeds = data
+          .filter((d) => !existingIds.has(d.id))
+          .map((d) => ({
+            id: d.id,
+            numero: d.numero,
+            setorId: d.setorid,
+            status: (['OCUPADO', 'DESOCUPADO', 'BLOQUEADO', 'HIGIENIZACAO'].includes(d.status?.toUpperCase())
+              ? d.status.toUpperCase()
+              : 'DESOCUPADO') as Bed['status'],
+            motivoBloqueio: d.motivobloqueio || undefined,
+          }));
+        return [...prev, ...newBeds];
+      });
+    } else if (type === 'pacientes') {
+      setPatients((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newPatients = data
+          .filter((d) => !existingIds.has(d.id))
+          .map((d) => ({
+            id: d.id,
+            leitoId: d.leitoid,
+            setorId: d.setorid,
+            nome: d.nome,
+            prontuario: d.prontuario,
+            idade: parseInt(d.idade || '0', 10) || 0,
+            dataInternacao: d.datainternacao || new Date().toISOString().split('T')[0],
+            classificacao: d.classificacao || 'Cuidados Mínimos',
+            traqueostomia: d.traqueostomia === 'true',
+            tipoIsolamento: d.tipoisolamento || 'Padrão',
+            alergia: d.alergia || 'Nenhuma conhecida',
+            estadoMental: d.estadomental || 'Lúcido e Orientado',
+            oxigenacao: d.oxigenacao || 'Ar Ambiente',
+            sinaisVitais: d.sinaisvitais || '4 em 4 horas',
+            mobilidade: d.mobilidade || 'Ativa no leito',
+            deambulacao: d.deambulacao || 'Deambula sem auxílio',
+            alimentacao: d.alimentacao || 'Oral livre',
+            curativo: d.curativo || 'sem curativo',
+            comprometimentoTecidual: d.comprometimentotecidual || 'Pele íntegra',
+            pontuacao: parseInt(d.pontuacao || '0', 10) || 0,
+            diagnostico: d.diagnostico || undefined,
+            observacoes: d.observacoes || undefined,
+          }));
+        return [...prev, ...newPatients];
+      });
+    }
+  };
+
   // Handlers for Employees (Quadro Geral de Funcionários)
   const handleSaveEmployee = (savedEmp: Employee) => {
     setEmployees((prev) => {
@@ -422,6 +530,18 @@ export default function App() {
             onSaveEmployee={handleSaveEmployee}
             onDeleteEmployee={handleDeleteEmployee}
             onToggleStatus={handleToggleEmployeeStatus}
+          />
+        )}
+
+        {activeTab === 'setores' && (
+          <SectorManagement
+            sectors={sectors}
+            beds={beds}
+            onSaveSector={handleSaveSector}
+            onDeleteSector={handleDeleteSector}
+            onSaveBed={handleSaveBedFromSectorMgmt}
+            onDeleteBed={handleDeleteBed}
+            onImportCsv={handleImportCsv}
           />
         )}
 

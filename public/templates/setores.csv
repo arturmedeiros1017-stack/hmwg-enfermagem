@@ -1,0 +1,5 @@
+id,nome,sigla,descricao,cor,capacidadeTotal
+sec-uti,UTI Geral Adulto,UTI-A,Unidade de Terapia Intensiva para pacientes críticos de alta complexidade e trauma,#0284c7,10
+sec-ps,Pronto-Socorro / Politrauma,PS-POLI,Atendimento de emergência, trauma e estabilização de choque,#dc2626,12
+sec-clinica-medica,Clínica Médica (Enfermaria),CLIN-MED,Enfermaria para pacientes clínicos de média e alta permanência,#059669,10
+sec-clinica-cirurgica,Clínica Cirúrgica / Ortopedia,CLIN-CIR,Pós-operatório de cirurgias ortopédicas, vasculares e politraumatismos,#7c3aed,8

@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Menu,
   X,
+  Building2,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -23,8 +24,8 @@ interface HeaderProps {
   currentUser: Nurse | null;
   currentShift: ShiftConfig;
   nurses: Nurse[];
-  activeTab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'impressao';
-  onSelectTab: (tab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'impressao') => void;
+  activeTab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao';
+  onSelectTab: (tab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao') => void;
   onOpenLogin: () => void;
 }
 
@@ -53,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
     { key: 'vagas' as const, label: 'Solicitação de Vagas', icon: GitPullRequest, color: 'amber' },
     { key: 'plantao' as const, label: 'Plantão & Escala', icon: Users, color: 'indigo' },
     { key: 'funcionarios' as const, label: 'Funcionários', icon: UserCheck, color: 'blue' },
+    { key: 'setores' as const, label: 'Setores & Enfermarias', icon: Building2, color: 'violet' },
     { key: 'impressao' as const, label: 'Folha A4', icon: Printer, color: 'emerald' },
   ];
 
@@ -181,6 +183,7 @@ export const Header: React.FC<HeaderProps> = ({
                 amber: isActive ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'text-slate-600 hover:bg-slate-100',
                 indigo: isActive ? 'bg-indigo-100 text-indigo-900 border border-indigo-300' : 'text-slate-600 hover:bg-slate-100',
                 blue: isActive ? 'bg-sky-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100',
+                violet: isActive ? 'bg-violet-100 text-violet-900 border border-violet-300' : 'text-slate-600 hover:bg-slate-100',
                 emerald: isActive ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100',
               };
               return (
@@ -269,6 +272,7 @@ export const Header: React.FC<HeaderProps> = ({
                   amber: isActive ? 'bg-amber-100 text-amber-900 border-amber-300' : 'text-slate-600 bg-white border-slate-200',
                   indigo: isActive ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'text-slate-600 bg-white border-slate-200',
                   blue: isActive ? 'bg-sky-700 text-white border-sky-700' : 'text-slate-700 bg-white border-slate-200',
+                  violet: isActive ? 'bg-violet-100 text-violet-900 border-violet-300' : 'text-slate-600 bg-white border-slate-200',
                   emerald: isActive ? 'bg-emerald-600 text-white border-emerald-600' : 'text-emerald-800 bg-emerald-50 border-emerald-300',
                 };
                 return (
