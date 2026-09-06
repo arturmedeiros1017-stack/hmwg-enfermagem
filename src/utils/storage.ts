@@ -97,9 +97,20 @@ async function checkGoogleSheetsData(): Promise<boolean> {
   }
 }
 
+export interface CloudData {
+  sectors: Sector[];
+  beds: Bed[];
+  patients: Patient[];
+  nurses: Nurse[];
+  technicians: Technician[];
+  employees: Employee[];
+  shifts: ShiftConfig[];
+  vacancies: VacancyRequest[];
+}
+
 // Carregar dados do Google Sheets e salvar localmente
-async function syncFromGoogleSheets(): Promise<boolean> {
-  if (!USE_GOOGLE_SHEETS) return false;
+async function syncFromGoogleSheets(): Promise<CloudData | null> {
+  if (!USE_GOOGLE_SHEETS) return null;
 
   try {
     const [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies] =
@@ -114,7 +125,7 @@ async function syncFromGoogleSheets(): Promise<boolean> {
         fetchVacancies(),
       ]);
 
-    if (sectors.length > 0) {
+    if (sectors && sectors.length > 0) {
       saveLocally(STORAGE_KEYS.SECTORS, sectors);
       saveLocally(STORAGE_KEYS.BEDS, beds);
       saveLocally(STORAGE_KEYS.PATIENTS, patients);
@@ -124,12 +135,12 @@ async function syncFromGoogleSheets(): Promise<boolean> {
       saveLocally(STORAGE_KEYS.SHIFTS, shifts);
       saveLocally(STORAGE_KEYS.VACANCIES, vacancies);
       saveLocally(STORAGE_KEYS.SYNC_STATUS, { lastSync: new Date().toISOString() });
-      return true;
+      return { sectors, beds, patients, nurses, technicians, employees, shifts, vacancies };
     }
-    return false;
+    return null;
   } catch (error) {
     console.error('Erro ao sincronizar do Google Sheets:', error);
-    return false;
+    return null;
   }
 }
 
@@ -148,17 +159,19 @@ async function syncToGoogleSheets(data: {
 
   try {
     const promises: Promise<void>[] = [];
-    if (data.sectors) promises.push(saveAllSectors(data.sectors));
-    if (data.beds) promises.push(saveAllBeds(data.beds));
+    if (data.sectors && data.sectors.length > 0) promises.push(saveAllSectors(data.sectors));
+    if (data.beds && data.beds.length > 0) promises.push(saveAllBeds(data.beds));
     if (data.patients) promises.push(saveAllPatients(data.patients));
-    if (data.nurses) promises.push(saveAllNurses(data.nurses));
-    if (data.technicians) promises.push(saveAllTechnicians(data.technicians));
-    if (data.employees) promises.push(saveAllEmployees(data.employees));
-    if (data.shifts) promises.push(saveAllShifts(data.shifts));
+    if (data.nurses && data.nurses.length > 0) promises.push(saveAllNurses(data.nurses));
+    if (data.technicians && data.technicians.length > 0) promises.push(saveAllTechnicians(data.technicians));
+    if (data.employees && data.employees.length > 0) promises.push(saveAllEmployees(data.employees));
+    if (data.shifts && data.shifts.length > 0) promises.push(saveAllShifts(data.shifts));
     if (data.vacancies) promises.push(saveAllVacancies(data.vacancies));
     await Promise.all(promises);
+    saveLocally(STORAGE_KEYS.SYNC_STATUS, { lastSync: new Date().toISOString() });
   } catch (error) {
     console.error('Erro ao sincronizar para Google Sheets:', error);
+    throw error;
   }
 }
 
@@ -176,69 +189,28 @@ export const Storage = {
   getSyncStatus: () => getItem<{ lastSync?: string }>(STORAGE_KEYS.SYNC_STATUS, {}),
 
   getSectors: (): Sector[] => getItem<Sector[]>(STORAGE_KEYS.SECTORS, INITIAL_SECTORS),
-  saveSectors: (sectors: Sector[]) => {
-    saveLocally(STORAGE_KEYS.SECTORS, sectors);
-    // Sincronizar com Google Sheets em background
-    if (USE_GOOGLE_SHEETS) {
-      saveAllSectors(sectors).catch(console.error);
-    }
-  },
+  saveSectors: (sectors: Sector[]) => saveLocally(STORAGE_KEYS.SECTORS, sectors),
 
   getBeds: (): Bed[] => getItem<Bed[]>(STORAGE_KEYS.BEDS, INITIAL_BEDS),
-  saveBeds: (beds: Bed[]) => {
-    saveLocally(STORAGE_KEYS.BEDS, beds);
-    if (USE_GOOGLE_SHEETS) {
-      saveAllBeds(beds).catch(console.error);
-    }
-  },
+  saveBeds: (beds: Bed[]) => saveLocally(STORAGE_KEYS.BEDS, beds),
 
   getPatients: (): Patient[] => getItem<Patient[]>(STORAGE_KEYS.PATIENTS, INITIAL_PATIENTS),
-  savePatients: (patients: Patient[]) => {
-    saveLocally(STORAGE_KEYS.PATIENTS, patients);
-    if (USE_GOOGLE_SHEETS) {
-      saveAllPatients(patients).catch(console.error);
-    }
-  },
+  savePatients: (patients: Patient[]) => saveLocally(STORAGE_KEYS.PATIENTS, patients),
 
   getNurses: (): Nurse[] => getItem<Nurse[]>(STORAGE_KEYS.NURSES, INITIAL_NURSES),
-  saveNurses: (nurses: Nurse[]) => {
-    saveLocally(STORAGE_KEYS.NURSES, nurses);
-    if (USE_GOOGLE_SHEETS) {
-      saveAllNurses(nurses).catch(console.error);
-    }
-  },
+  saveNurses: (nurses: Nurse[]) => saveLocally(STORAGE_KEYS.NURSES, nurses),
 
   getTechnicians: (): Technician[] => getItem<Technician[]>(STORAGE_KEYS.TECHNICIANS, INITIAL_TECHNICIANS),
-  saveTechnicians: (technicians: Technician[]) => {
-    saveLocally(STORAGE_KEYS.TECHNICIANS, technicians);
-    if (USE_GOOGLE_SHEETS) {
-      saveAllTechnicians(technicians).catch(console.error);
-    }
-  },
+  saveTechnicians: (technicians: Technician[]) => saveLocally(STORAGE_KEYS.TECHNICIANS, technicians),
 
   getEmployees: (): Employee[] => getItem<Employee[]>(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES),
-  saveEmployees: (employees: Employee[]) => {
-    saveLocally(STORAGE_KEYS.EMPLOYEES, employees);
-    if (USE_GOOGLE_SHEETS) {
-      saveAllEmployees(employees).catch(console.error);
-    }
-  },
+  saveEmployees: (employees: Employee[]) => saveLocally(STORAGE_KEYS.EMPLOYEES, employees),
 
   getShifts: (): ShiftConfig[] => getItem<ShiftConfig[]>(STORAGE_KEYS.SHIFTS, INITIAL_SHIFT_CONFIGS),
-  saveShifts: (shifts: ShiftConfig[]) => {
-    saveLocally(STORAGE_KEYS.SHIFTS, shifts);
-    if (USE_GOOGLE_SHEETS) {
-      saveAllShifts(shifts).catch(console.error);
-    }
-  },
+  saveShifts: (shifts: ShiftConfig[]) => saveLocally(STORAGE_KEYS.SHIFTS, shifts),
 
   getVacancies: (): VacancyRequest[] => getItem<VacancyRequest[]>(STORAGE_KEYS.VACANCIES, INITIAL_VACANCY_REQUESTS),
-  saveVacancies: (vacancies: VacancyRequest[]) => {
-    saveLocally(STORAGE_KEYS.VACANCIES, vacancies);
-    if (USE_GOOGLE_SHEETS) {
-      saveAllVacancies(vacancies).catch(console.error);
-    }
-  },
+  saveVacancies: (vacancies: VacancyRequest[]) => saveLocally(STORAGE_KEYS.VACANCIES, vacancies),
 
   getCurrentUser: (): Nurse | null => getItem<Nurse | null>(STORAGE_KEYS.CURRENT_USER, INITIAL_NURSES[0]),
   saveCurrentUser: (nurse: Nurse | null) => setItem(STORAGE_KEYS.CURRENT_USER, nurse),

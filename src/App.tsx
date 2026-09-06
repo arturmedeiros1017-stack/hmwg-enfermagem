@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Bed,
   BedStatus,
@@ -70,6 +70,100 @@ export default function App() {
   useEffect(() => { Storage.saveVacancies(vacancies); }, [vacancies]);
   useEffect(() => { Storage.saveCurrentUser(currentUser); }, [currentUser]);
   useEffect(() => { Storage.saveSelectedSectorId(selectedSectorId); }, [selectedSectorId]);
+
+  // Cloud Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => {
+    const status = Storage.getSyncStatus();
+    return status.lastSync ? new Date(status.lastSync) : null;
+  });
+  const isInitialSyncDone = useRef(false);
+  const isPushing = useRef(false);
+
+  // Pull latest data from Google Sheets
+  const pullFromCloud = useCallback(async (isSilent = false) => {
+    if (!Storage.isUsingGoogleSheets() || isPushing.current) return;
+    if (!isSilent) setIsSyncing(true);
+
+    try {
+      const data = await Storage.syncFromGoogleSheets();
+      if (data) {
+        if (data.sectors && data.sectors.length > 0) setSectors(data.sectors);
+        if (data.beds) setBeds(data.beds);
+        if (data.patients) setPatients(data.patients);
+        if (data.nurses && data.nurses.length > 0) setNurses(data.nurses);
+        if (data.technicians && data.technicians.length > 0) setTechnicians(data.technicians);
+        if (data.employees && data.employees.length > 0) setEmployees(data.employees);
+        if (data.shifts && data.shifts.length > 0) setShifts(data.shifts);
+        if (data.vacancies) setVacancies(data.vacancies);
+        setLastSyncTime(new Date());
+      }
+    } catch (err) {
+      console.error('Erro ao sincronizar do Google Sheets:', err);
+    } finally {
+      isInitialSyncDone.current = true;
+      if (!isSilent) setIsSyncing(false);
+    }
+  }, []);
+
+  // Push local data to Google Sheets
+  const pushToCloud = useCallback(async () => {
+    if (!Storage.isUsingGoogleSheets() || !isInitialSyncDone.current || isPushing.current) return;
+    isPushing.current = true;
+    setIsSyncing(true);
+    try {
+      await Storage.syncToGoogleSheets({
+        sectors,
+        beds,
+        patients,
+        nurses,
+        technicians,
+        employees,
+        shifts,
+        vacancies,
+      });
+      setLastSyncTime(new Date());
+    } catch (err) {
+      console.error('Erro ao salvar no Google Sheets:', err);
+    } finally {
+      isPushing.current = false;
+      setIsSyncing(false);
+    }
+  }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies]);
+
+  // Initial mount sync & visibility / interval auto-pull
+  useEffect(() => {
+    pullFromCloud(false);
+
+    // Pull when tab becomes visible (user returns to mobile browser)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        pullFromCloud(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Periodic pull every 20 seconds so mobile stays updated with PC
+    const interval = setInterval(() => {
+      pullFromCloud(true);
+    }, 20000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [pullFromCloud]);
+
+  // Debounced auto-push when data changes AFTER initial sync has completed
+  useEffect(() => {
+    if (!isInitialSyncDone.current || !Storage.isUsingGoogleSheets()) return;
+
+    const timer = setTimeout(() => {
+      pushToCloud();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, pushToCloud]);
 
   // Current Active Sector & Shift
   const currentSector = sectors.find((s) => s.id === selectedSectorId) || sectors[0];
@@ -453,22 +547,28 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 selection:bg-sky-600 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 selection:bg-sky-600 selection:text-white overflow-x-hidden">
       {/* Primary Header with HMWG Logo & Hospital Navigation */}
       <Header
         sectors={sectors}
         selectedSectorId={selectedSectorId}
-        onSelectSector={setSelectedSectorId}
+        onSelectSector={(id) => {
+          setSelectedSectorId(id);
+          setActiveTab('mapa');
+        }}
         currentUser={currentUser}
         currentShift={currentShift}
         nurses={nurses}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onOpenLogin={() => setIsLoginOpen(true)}
+        isSyncing={isSyncing}
+        lastSyncTime={lastSyncTime}
+        onManualSync={() => pullFromCloud(false)}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-6 overflow-x-auto">
         {activeTab === 'mapa' && (
           <BedMap
             currentSector={currentSector}

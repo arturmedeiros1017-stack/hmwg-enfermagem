@@ -22,8 +22,9 @@ import {
   VacancyRequest,
 } from '../types';
 
-const API_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || '';
-const USE_GOOGLE_SHEETS = !!API_URL;
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxdu_kvKMQRNWc0nhNFW_P0-RvIjonCMCFJTAv9ihH-Z9DBgyYQqAkSVTjYQYIh6I1u/exec';
+const API_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || DEFAULT_API_URL;
+const USE_GOOGLE_SHEETS = Boolean(API_URL);
 
 // Helper para fazer requisições
 async function request(action: string, sheet: string, params: Record<string, any> = {}): Promise<any> {
@@ -82,7 +83,10 @@ export { USE_GOOGLE_SHEETS };
 export async function fetchSectors(): Promise<Sector[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'setores');
-  return result.data || [];
+  return (result.data || []).map((s: any) => ({
+    ...s,
+    capacidadeTotal: Number(s.capacidadeTotal) || 0,
+  }));
 }
 
 export async function saveSector(sector: Sector): Promise<void> {
@@ -105,7 +109,10 @@ export async function deleteSector(id: string): Promise<void> {
 export async function fetchBeds(): Promise<Bed[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'leitos');
-  return result.data || [];
+  return (result.data || []).map((b: any) => ({
+    ...b,
+    numero: String(b.numero),
+  }));
 }
 
 export async function saveBed(bed: Bed): Promise<void> {
@@ -128,7 +135,12 @@ export async function deleteBed(id: string): Promise<void> {
 export async function fetchPatients(): Promise<Patient[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'pacientes');
-  return result.data || [];
+  return (result.data || []).map((p: any) => ({
+    ...p,
+    idade: Number(p.idade) || 0,
+    pontuacao: Number(p.pontuacao) || 0,
+    traqueostomia: p.traqueostomia === true || p.traqueostomia === 'true',
+  }));
 }
 
 export async function savePatient(patient: Patient): Promise<void> {
@@ -174,7 +186,10 @@ export async function deleteNurse(id: string): Promise<void> {
 export async function fetchTechnicians(): Promise<Technician[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'tecnicos');
-  return result.data || [];
+  return (result.data || []).map((t: any) => ({
+    ...t,
+    presenteNoPlantao: t.presenteNoPlantao === true || t.presenteNoPlantao === 'true',
+  }));
 }
 
 export async function saveTechnician(technician: Technician): Promise<void> {
@@ -220,7 +235,35 @@ export async function deleteEmployee(id: string): Promise<void> {
 export async function fetchShifts(): Promise<ShiftConfig[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'plantoes');
-  return result.data || [];
+  return (result.data || []).map((s: any) => {
+    let enfIds: string[] = [];
+    if (Array.isArray(s.enfermeirosResponsaveisIds)) {
+      enfIds = s.enfermeirosResponsaveisIds;
+    } else if (typeof s.enfermeirosResponsaveisIds === 'string' && s.enfermeirosResponsaveisIds.trim()) {
+      try {
+        enfIds = JSON.parse(s.enfermeirosResponsaveisIds);
+      } catch {
+        enfIds = s.enfermeirosResponsaveisIds.split(',').map((id: string) => id.trim()).filter(Boolean);
+      }
+    }
+
+    let leitosMap: Record<string, string[]> = {};
+    if (s.enfermeiroLeitosMap && typeof s.enfermeiroLeitosMap === 'object' && !Array.isArray(s.enfermeiroLeitosMap)) {
+      leitosMap = s.enfermeiroLeitosMap;
+    } else if (typeof s.enfermeiroLeitosMap === 'string' && s.enfermeiroLeitosMap.trim()) {
+      try {
+        leitosMap = JSON.parse(s.enfermeiroLeitosMap);
+      } catch {
+        leitosMap = {};
+      }
+    }
+
+    return {
+      ...s,
+      enfermeirosResponsaveisIds: enfIds,
+      enfermeiroLeitosMap: leitosMap,
+    };
+  });
 }
 
 export async function saveShift(shift: ShiftConfig): Promise<void> {

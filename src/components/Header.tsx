@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   Building2,
+  RefreshCw,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -27,6 +28,9 @@ interface HeaderProps {
   activeTab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao';
   onSelectTab: (tab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao') => void;
   onOpenLogin: () => void;
+  isSyncing?: boolean;
+  lastSyncTime?: Date | null;
+  onManualSync?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +43,9 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onSelectTab,
   onOpenLogin,
+  isSyncing = false,
+  lastSyncTime = null,
+  onManualSync,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const currentSector = sectors.find((s) => s.id === selectedSectorId) || sectors[0];
@@ -54,7 +61,7 @@ export const Header: React.FC<HeaderProps> = ({
     { key: 'vagas' as const, label: 'Solicitação de Vagas', icon: GitPullRequest, color: 'amber' },
     { key: 'plantao' as const, label: 'Plantão & Escala', icon: Users, color: 'indigo' },
     { key: 'funcionarios' as const, label: 'Funcionários', icon: UserCheck, color: 'blue' },
-    { key: 'setores' as const, label: 'Setores & Enfermarias', icon: Building2, color: 'violet' },
+    { key: 'setores' as const, label: 'Setores & Enf.', icon: Building2, color: 'violet' },
     { key: 'impressao' as const, label: 'Folha A4', icon: Printer, color: 'emerald' },
   ];
 
@@ -110,6 +117,21 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
+            {/* Cloud Sync Button */}
+            {onManualSync && (
+              <button
+                onClick={onManualSync}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors border border-white/20 cursor-pointer disabled:opacity-60"
+                title={lastSyncTime ? `Última sincronização: ${lastSyncTime.toLocaleTimeString('pt-BR')}` : 'Sincronizar dados com a nuvem'}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-cyan-300 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline text-[11px] font-semibold">
+                  {isSyncing ? 'Sincronizando...' : 'Nuvem'}
+                </span>
+              </button>
+            )}
+
             {/* User Login Pill */}
             <button
               onClick={onOpenLogin}
@@ -140,40 +162,11 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Desktop: Sector Switcher & Navigation Tabs */}
+      {/* Desktop: Navigation Tabs */}
       <div className="hidden md:block max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between py-2.5 gap-3">
-          {/* Sector Switcher */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Setor:
-            </span>
-            <div className="flex items-center gap-1.5">
-              {sectors.map((sector) => {
-                const isSelected = sector.id === selectedSectorId;
-                return (
-                  <button
-                    key={sector.id}
-                    onClick={() => onSelectSector(sector.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-sky-700 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                    }`}
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: sector.cor }}
-                    />
-                    {sector.nome}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
+        <div className="py-2.5">
           {/* Navigation Tabs */}
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1 overflow-x-auto scrollbar-none">
             {navTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
@@ -200,6 +193,39 @@ export const Header: React.FC<HeaderProps> = ({
               );
             })}
           </nav>
+        </div>
+      </div>
+
+      {/* Desktop: Sector Switcher */}
+      <div className="hidden md:block bg-slate-50 border-t border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex-shrink-0">
+              Setor:
+            </span>
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none flex-1">
+              {sectors.map((sector) => {
+                const isSelected = sector.id === selectedSectorId;
+                return (
+                  <button
+                    key={sector.id}
+                    onClick={() => onSelectSector(sector.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 flex-shrink-0 ${
+                      isSelected
+                        ? 'bg-sky-700 text-white shadow-xs'
+                        : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: sector.cor }}
+                    />
+                    {sector.nome}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -238,6 +264,32 @@ export const Header: React.FC<HeaderProps> = ({
                 })}
               </div>
             </div>
+
+            {/* Cloud Sync Status & Action - Mobile */}
+            {onManualSync && (
+              <div className="flex items-center justify-between gap-2 bg-sky-50 px-3 py-2 rounded-lg border border-sky-200">
+                <div className="flex items-center gap-2 min-w-0">
+                  <RefreshCw className={`w-4 h-4 text-sky-600 flex-shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-bold text-sky-900 block leading-tight">
+                      {isSyncing ? 'Sincronizando com a nuvem...' : 'Google Sheets Conectado'}
+                    </span>
+                    <span className="text-[9px] text-sky-700 block truncate">
+                      {lastSyncTime ? `Última sinc.: ${lastSyncTime.toLocaleTimeString('pt-BR')}` : 'Sincronização em tempo real'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    onManualSync();
+                  }}
+                  disabled={isSyncing}
+                  className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 disabled:opacity-50 text-white rounded-md text-[11px] font-bold shadow-xs flex-shrink-0 cursor-pointer"
+                >
+                  {isSyncing ? 'Atualizando...' : 'Atualizar'}
+                </button>
+              </div>
+            )}
 
             {/* Shift Info - Mobile */}
             <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 text-[11px]">
