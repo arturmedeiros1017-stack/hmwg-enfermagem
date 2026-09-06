@@ -73,12 +73,20 @@ export default function App() {
 
   // Cloud Sync State
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' } | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => {
     const status = Storage.getSyncStatus();
     return status.lastSync ? new Date(status.lastSync) : null;
   });
   const isInitialSyncDone = useRef(false);
   const isPushing = useRef(false);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    setSyncToast({ show: true, message, type });
+    setTimeout(() => {
+      setSyncToast((prev) => (prev?.message === message ? null : prev));
+    }, 3500);
+  }, []);
 
   // Pull latest data from Google Sheets
   const pullFromCloud = useCallback(async (isSilent = false) => {
@@ -97,14 +105,16 @@ export default function App() {
         if (data.shifts && data.shifts.length > 0) setShifts(data.shifts);
         if (data.vacancies) setVacancies(data.vacancies);
         setLastSyncTime(new Date());
+        if (!isSilent) showToast('Sistema atualizado com a nuvem!');
       }
     } catch (err) {
       console.error('Erro ao sincronizar do Google Sheets:', err);
+      if (!isSilent) showToast('Falha na sincronização com a nuvem', 'error');
     } finally {
       isInitialSyncDone.current = true;
       if (!isSilent) setIsSyncing(false);
     }
-  }, []);
+  }, [showToast]);
 
   // Push local data to Google Sheets
   const pushToCloud = useCallback(async () => {
@@ -706,6 +716,22 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Sync Toast Notification */}
+      {syncToast && syncToast.show && (
+        <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div
+            className={`px-4 py-2.5 rounded-xl shadow-lg border text-xs font-semibold flex items-center gap-2 ${
+              syncToast.type === 'success'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/20'
+                : 'bg-rose-600 text-white border-rose-500 shadow-rose-900/20'
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <span>{syncToast.message}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
