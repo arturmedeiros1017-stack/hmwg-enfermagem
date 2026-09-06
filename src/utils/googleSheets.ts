@@ -137,6 +137,7 @@ export async function fetchPatients(): Promise<Patient[]> {
   const result = await request('getAll', 'pacientes');
   return (result.data || []).map((p: any) => ({
     ...p,
+    dataNascimento: p.dataNascimento ? String(p.dataNascimento) : undefined,
     idade: Number(p.idade) || 0,
     pontuacao: Number(p.pontuacao) || 0,
     traqueostomia: p.traqueostomia === true || p.traqueostomia === 'true',
@@ -286,7 +287,11 @@ export async function deleteShift(id: string): Promise<void> {
 export async function fetchVacancies(): Promise<VacancyRequest[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'vagas');
-  return result.data || [];
+  return (result.data || []).map((v: any) => ({
+    ...v,
+    dataNascimento: v.dataNascimento ? String(v.dataNascimento) : undefined,
+    idade: v.idade !== undefined && v.idade !== '' ? Number(v.idade) : undefined,
+  }));
 }
 
 export async function saveVacancy(vacancy: VacancyRequest): Promise<void> {

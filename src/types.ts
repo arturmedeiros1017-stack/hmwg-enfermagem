@@ -81,6 +81,7 @@ export interface Patient {
   setorId: string;
   nome: string;
   prontuario: string;
+  dataNascimento?: string; // Formato YYYY-MM-DD
   idade: number;
   dataInternacao: string;
   classificacao: PatientClassification;
@@ -193,6 +194,7 @@ export interface VacancyRequest {
   id: string;
   pacienteNome: string;
   prontuario: string;
+  dataNascimento?: string;
   idade?: number;
   setorOrigem: string;
   setorDestinoId: string;

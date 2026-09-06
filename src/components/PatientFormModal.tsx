@@ -14,6 +14,7 @@ import {
   VitalSignsInterval,
 } from '../types';
 import { calculatePatientScore } from '../utils/assignment';
+import { calculateAge } from '../utils/dateUtils';
 import { HMWGLogo } from './HMWGLogo';
 import {
   X,
@@ -27,6 +28,7 @@ import {
   ShieldAlert,
   Save,
   Trash2,
+  Calendar,
 } from 'lucide-react';
 
 interface PatientFormModalProps {
@@ -48,7 +50,8 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
 }) => {
   const [nome, setNome] = useState('');
   const [prontuario, setProntuario] = useState('');
-  const [idade, setIdade] = useState<number>(50);
+  const [dataNascimento, setDataNascimento] = useState('');
+  const [idade, setIdade] = useState<number>(0);
   const [dataInternacao, setDataInternacao] = useState(
     new Date().toISOString().split('T')[0]
   );
@@ -70,11 +73,24 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
   const [observacoes, setObservacoes] = useState('');
   const [pontuacaoManual, setPontuacaoManual] = useState<number | null>(null);
 
+  const handleDataNascimentoChange = (newDate: string) => {
+    setDataNascimento(newDate);
+    if (newDate) {
+      const calculated = calculateAge(newDate);
+      setIdade(calculated);
+    }
+  };
+
   useEffect(() => {
     if (patientToEdit) {
       setNome(patientToEdit.nome);
       setProntuario(patientToEdit.prontuario);
-      setIdade(patientToEdit.idade);
+      setDataNascimento(patientToEdit.dataNascimento || '');
+      if (patientToEdit.dataNascimento) {
+        setIdade(calculateAge(patientToEdit.dataNascimento));
+      } else {
+        setIdade(patientToEdit.idade || 0);
+      }
       setDataInternacao(patientToEdit.dataInternacao);
       setClassificacao(patientToEdit.classificacao);
       setTraqueostomia(patientToEdit.traqueostomia);
@@ -94,7 +110,8 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
     } else {
       setNome('');
       setProntuario(`HMWG-${Math.floor(10000 + Math.random() * 90000)}`);
-      setIdade(45);
+      setDataNascimento('');
+      setIdade(0);
       setDataInternacao(new Date().toISOString().split('T')[0]);
       setClassificacao('Cuidados Intermediários');
       setTraqueostomia(false);
@@ -142,6 +159,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       setorId: bed.setorId,
       nome: nome.trim(),
       prontuario: prontuario.trim() || `HMWG-${Math.floor(10000 + Math.random() * 90000)}`,
+      dataNascimento: dataNascimento || undefined,
       idade: Number(idade) || 0,
       dataInternacao,
       classificacao,
@@ -217,7 +235,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
               1. Identificação Básica do Paciente
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <div className="sm:col-span-6">
+              <div className="sm:col-span-8">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Nome Completo do Paciente *
                 </label>
@@ -231,7 +249,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 />
               </div>
 
-              <div className="sm:col-span-3">
+              <div className="sm:col-span-4">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Nº do Prontuário HMWG *
                 </label>
@@ -245,18 +263,46 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 />
               </div>
 
-              <div className="sm:col-span-3">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Idade (anos)
+              <div className="sm:col-span-4">
+                <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                    Data de Nascimento *
+                  </span>
                 </label>
                 <input
-                  type="number"
-                  min="0"
-                  max="130"
-                  value={idade}
-                  onChange={(e) => setIdade(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  type="date"
+                  required
+                  max={new Date().toISOString().split('T')[0]}
+                  value={dataNascimento}
+                  onChange={(e) => handleDataNascimentoChange(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-sky-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none bg-sky-50/50 font-medium text-slate-800"
                 />
+              </div>
+
+              <div className="sm:col-span-4">
+                <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Idade (em anos)</span>
+                  <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
+                    Calculada automaticamente
+                  </span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="130"
+                    value={idade !== 0 ? idade : ''}
+                    onChange={(e) => setIdade(Number(e.target.value))}
+                    placeholder="Definida pela data de nascimento"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none font-bold text-slate-800 bg-slate-50"
+                  />
+                  {idade > 0 && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded pointer-events-none">
+                      {idade} {idade === 1 ? 'ano' : 'anos'}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="sm:col-span-8">

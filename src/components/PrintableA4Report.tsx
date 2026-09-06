@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Bed, Nurse, Patient, Sector, ShiftConfig, Technician } from '../types';
 import { generateNursingAssignment } from '../utils/assignment';
+import { formatDateBR } from '../utils/dateUtils';
 import { HMWGLogo } from './HMWGLogo';
 import {
   Printer,
@@ -279,7 +280,7 @@ export const PrintableA4Report: React.FC<PrintableA4ReportProps> = ({
                               <div>
                                 <div className="leading-tight">{paciente.nome}</div>
                                 <div className="text-[9px] text-slate-500 font-mono">
-                                  {paciente.prontuario} • {paciente.idade}a
+                                  {paciente.prontuario} • {paciente.idade}a{paciente.dataNascimento ? ` (${formatDateBR(paciente.dataNascimento)})` : ''}
                                 </div>
                               </div>
                             ) : (

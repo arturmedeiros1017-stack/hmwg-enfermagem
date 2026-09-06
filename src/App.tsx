@@ -16,6 +16,7 @@ import {
   VacancyRequest,
 } from './types';
 import { Storage } from './utils/storage';
+import { calculateAge } from './utils/dateUtils';
 import { Header } from './components/Header';
 import { BedMap } from './components/BedMap';
 import { CareAssignment } from './components/CareAssignment';
@@ -446,8 +447,9 @@ export default function App() {
             setorId: d.setorid,
             nome: d.nome,
             prontuario: d.prontuario,
-            idade: parseInt(d.idade || '0', 10) || 0,
-            dataInternacao: d.datainternacao || new Date().toISOString().split('T')[0],
+            dataNascimento: d.datanascimento || undefined,
+            idade: d.datanascimento ? calculateAge(d.datanascimento) : (parseInt(d.idade || '0', 10) || 0),
+            dataInternacao: d.datanacao || d.datainternacao || new Date().toISOString().split('T')[0],
             classificacao: d.classificacao || 'Cuidados Mínimos',
             traqueostomia: d.traqueostomia === 'true',
             tipoIsolamento: d.tipoisolamento || 'Padrão',

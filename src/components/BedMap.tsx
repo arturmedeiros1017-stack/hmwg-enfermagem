@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Bed, BedStatus, Patient, Sector, VacancyRequest } from '../types';
+import { formatDateBR } from '../utils/dateUtils';
 import { HMWGLogo } from './HMWGLogo';
 import {
   Bed as BedIcon,
@@ -400,7 +401,7 @@ export const BedMap: React.FC<BedMapProps> = ({
                             {patient.nome}
                           </h4>
                           <span className="text-[11px] text-slate-500 font-mono">
-                            {patient.prontuario} • {patient.idade} anos
+                            {patient.prontuario} • {patient.idade} anos{patient.dataNascimento ? ` (${formatDateBR(patient.dataNascimento)})` : ''}
                           </span>
                         </div>
 

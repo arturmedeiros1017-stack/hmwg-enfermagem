@@ -39,7 +39,7 @@ const HEADERS = {
   setores: ['id', 'nome', 'sigla', 'descricao', 'cor', 'capacidadeTotal'],
   leitos: ['id', 'numero', 'setorId', 'status', 'motivoBloqueio'],
   pacientes: [
-    'id', 'leitoId', 'setorId', 'nome', 'prontuario', 'idade', 'dataInternacao',
+    'id', 'leitoId', 'setorId', 'nome', 'prontuario', 'dataNascimento', 'idade', 'dataInternacao',
     'classificacao', 'traqueostomia', 'tipoIsolamento', 'alergia', 'estadoMental',
     'oxigenacao', 'sinaisVitais', 'mobilidade', 'deambulacao', 'alimentacao',
     'curativo', 'comprometimentoTecidual', 'pontuacao', 'diagnostico', 'observacoes',
@@ -53,7 +53,7 @@ const HEADERS = {
   ],
   plantoes: ['id', 'data', 'turno', 'setorId', 'enfermeirosResponsaveisIds', 'enfermeiroLeitosMap', 'observacoesPlantao'],
   vagas: [
-    'id', 'pacienteNome', 'prontuario', 'idade', 'setorOrigem', 'setorDestinoId',
+    'id', 'pacienteNome', 'prontuario', 'dataNascimento', 'idade', 'setorOrigem', 'setorDestinoId',
     'leitoDesejadoId', 'prioridade', 'diagnostico', 'justificativaClinica',
     'dataSolicitacao', 'status', 'solicitanteNome',
   ],

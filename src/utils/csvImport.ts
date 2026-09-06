@@ -1,4 +1,5 @@
 import { Bed, Patient, Sector } from '../types';
+import { calculateAge } from './dateUtils';
 
 export function parseCSV(csvText: string): string[][] {
   const lines = csvText.split('\n').filter((line) => line.trim() !== '');
@@ -73,8 +74,9 @@ export function importPatientsFromCSV(csvText: string): Patient[] {
       setorId: obj.setorid || '',
       nome: obj.nome || '',
       prontuario: obj.prontuario || '',
-      idade: parseInt(obj.idade || '0', 10) || 0,
-      dataInternacao: obj.datainternacao || new Date().toISOString().split('T')[0],
+      dataNascimento: obj.datanascimento || undefined,
+      idade: obj.datanascimento ? calculateAge(obj.datanascimento) : (parseInt(obj.idade || '0', 10) || 0),
+      dataInternacao: obj.datanacao || obj.datainternacao || new Date().toISOString().split('T')[0],
       classificacao: (obj.classificacao as Patient['classificacao']) || 'Cuidados Mínimos',
       traqueostomia: obj.traqueostomia === 'true',
       tipoIsolamento: (obj.tipoisolamento as any) || 'Padrão',

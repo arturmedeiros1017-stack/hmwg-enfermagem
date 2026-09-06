@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Bed, Sector, VacancyRequest } from '../types';
+import { calculateAge } from '../utils/dateUtils';
 import { HMWGLogo } from './HMWGLogo';
 import {
   GitPullRequest,
@@ -13,6 +14,7 @@ import {
   Filter,
   User,
   Bed as BedIcon,
+  Calendar,
 } from 'lucide-react';
 
 interface VacancyRequestsProps {
@@ -43,7 +45,8 @@ export const VacancyRequests: React.FC<VacancyRequestsProps> = ({
   // Form states
   const [pacienteNome, setPacienteNome] = useState('');
   const [prontuario, setProntuario] = useState(`HMWG-${Math.floor(10000 + Math.random() * 90000)}`);
-  const [idade, setIdade] = useState<number>(45);
+  const [dataNascimento, setDataNascimento] = useState('');
+  const [idade, setIdade] = useState<number | ''>('');
   const [setorOrigem, setSetorOrigem] = useState('Pronto-Socorro / Sala Vermelha');
   const [setorDestinoId, setSetorDestinoId] = useState(
     preSelectedBed ? preSelectedBed.setorId : sectors[0]?.id || ''
@@ -55,6 +58,14 @@ export const VacancyRequests: React.FC<VacancyRequestsProps> = ({
   const [diagnostico, setDiagnostico] = useState('');
   const [justificativaClinica, setJustificativaClinica] = useState('');
   const [solicitanteNome, setSolicitanteNome] = useState('Plantão de Enfermagem / Médico');
+
+  const handleDataNascimentoChange = (newDate: string) => {
+    setDataNascimento(newDate);
+    if (newDate) {
+      const calculated = calculateAge(newDate);
+      setIdade(calculated);
+    }
+  };
 
   // When preSelectedBed changes
   React.useEffect(() => {
@@ -78,7 +89,8 @@ export const VacancyRequests: React.FC<VacancyRequestsProps> = ({
       id: `req-${Date.now()}`,
       pacienteNome: pacienteNome.trim(),
       prontuario: prontuario.trim(),
-      idade: Number(idade) || 0,
+      dataNascimento: dataNascimento || undefined,
+      idade: idade !== '' ? Number(idade) : undefined,
       setorOrigem: setorOrigem.trim(),
       setorDestinoId,
       leitoDesejadoId: leitoDesejadoId || undefined,
@@ -404,14 +416,36 @@ export const VacancyRequests: React.FC<VacancyRequestsProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Idade (anos)
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                      Data de Nascimento
+                    </span>
+                  </label>
+                  <input
+                    type="date"
+                    max={new Date().toISOString().split('T')[0]}
+                    value={dataNascimento}
+                    onChange={(e) => handleDataNascimentoChange(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50/40 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Idade (anos)</span>
+                    <span className="text-[10px] text-purple-700 font-semibold">
+                      {idade !== '' && idade > 0 ? `${idade} anos` : 'Automática'}
+                    </span>
                   </label>
                   <input
                     type="number"
+                    min="0"
+                    max="130"
+                    placeholder="Calculada da data de nasc."
                     value={idade}
-                    onChange={(e) => setIdade(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    onChange={(e) => setIdade(e.target.value !== '' ? Number(e.target.value) : '')}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none font-bold text-slate-800 bg-slate-50"
                   />
                 </div>
 
