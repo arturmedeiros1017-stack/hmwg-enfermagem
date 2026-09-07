@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Nurse, Sector, ShiftConfig } from '../types';
+import { AuthUser, Nurse, Sector, ShiftConfig } from '../types';
 import { HMWGLogo } from './HMWGLogo';
 import {
   Bed,
@@ -22,12 +22,13 @@ interface HeaderProps {
   sectors: Sector[];
   selectedSectorId: string;
   onSelectSector: (sectorId: string) => void;
-  currentUser: Nurse | null;
+  currentUser: AuthUser | Nurse | null;
   currentShift: ShiftConfig;
   nurses: Nurse[];
-  activeTab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao';
-  onSelectTab: (tab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao') => void;
+  activeTab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao' | 'acessos';
+  onSelectTab: (tab: 'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao' | 'acessos') => void;
   onOpenLogin: () => void;
+  onLogout: () => void;
   isSyncing?: boolean;
   lastSyncTime?: Date | null;
   onManualSync?: () => void;
@@ -43,6 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onSelectTab,
   onOpenLogin,
+  onLogout,
   isSyncing = false,
   lastSyncTime = null,
   onManualSync,
@@ -63,33 +65,36 @@ export const Header: React.FC<HeaderProps> = ({
     { key: 'funcionarios' as const, label: 'Funcionários', icon: UserCheck, color: 'blue' },
     { key: 'setores' as const, label: 'Setores & Enf.', icon: Building2, color: 'violet' },
     { key: 'impressao' as const, label: 'Folha A4', icon: Printer, color: 'emerald' },
+    { key: 'acessos' as const, label: 'Acessos & Senhas', icon: ShieldCheck, color: 'indigo' },
   ];
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-      {/* Top Banner - Hospital Identification */}
-      <div className="bg-gradient-to-r from-sky-900 via-sky-800 to-cyan-900 text-white px-3 py-2 sm:px-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
-          {/* Logo & Hospital Title */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <HMWGLogo size="md" showText={false} className="border-white/30 flex-shrink-0" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="text-base sm:text-lg font-black tracking-tight text-white leading-none">
-                  HMWG
-                </span>
-                <span className="hidden lg:inline-block text-xs font-semibold px-2 py-0.5 rounded bg-sky-600/60 text-sky-100 border border-sky-400/30">
-                  Pronto-Socorro & Trauma
-                </span>
-              </div>
-              <h1 className="text-[10px] sm:text-sm font-semibold text-sky-100 leading-tight truncate">
-                Hospital Monsenhor Walfredo Gurgel
-              </h1>
-              <p className="text-[9px] sm:text-[10px] text-cyan-200 hidden sm:block">
-                Sistema Integrado de Gestão da Assistência de Enfermagem
-              </p>
+      {/* Hospital Info Bar - Independent Horizontal Layout */}
+      <div className="bg-sky-950 text-white">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-1.5 flex items-center justify-between text-[10px] sm:text-[11px]">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-1.5">
+              <HMWGLogo size="sm" showText={false} className="border-white/20 flex-shrink-0" />
+              <span className="font-black tracking-tight text-sm sm:text-base">HMWG</span>
             </div>
+            <span className="text-cyan-500/40 hidden sm:inline">|</span>
+            <span className="font-semibold text-sky-100 hidden sm:inline">Hospital Monsenhor Walfredo Gurgel</span>
+            <span className="text-cyan-500/40 hidden md:inline">|</span>
+            <span className="hidden md:inline">Av. Senador Salgado Filho, 1921 — Natal/RN</span>
           </div>
+          <div className="flex items-center gap-2 sm:gap-4 text-sky-300/80 flex-shrink-0">
+            <span className="font-semibold text-sky-100">Sistema de Gestão de Enfermagem</span>
+            <span className="text-cyan-500/40 hidden sm:inline">|</span>
+            <span className="hidden sm:inline">Pronto-Socorro & Trauma</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Header - Controls */}
+      <div className="bg-gradient-to-r from-sky-800 via-sky-700 to-cyan-800 text-white px-3 py-2 sm:px-6">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
+          {/* Spacer - controls will align right */}
 
           {/* Right side: shift info + login */}
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs flex-shrink-0">
@@ -133,22 +138,33 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* User Login Pill */}
-            <button
-              onClick={onOpenLogin}
-              className="flex items-center gap-1.5 sm:gap-2 bg-white text-sky-900 hover:bg-sky-50 px-2 py-1.5 sm:px-3 rounded-lg font-semibold shadow-xs transition-colors cursor-pointer border border-white/40"
-              title="Trocar usuário ou fazer login"
-            >
-              <UserCheck className="w-4 h-4 text-sky-700 flex-shrink-0" />
-              <div className="text-left hidden sm:block">
-                <div className="text-[11px] leading-none font-bold text-slate-900">
-                  {currentUser ? currentUser.nome : 'Fazer Login'}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onOpenLogin}
+                className="flex items-center gap-1.5 sm:gap-2 bg-white text-sky-900 hover:bg-sky-50 px-2 py-1.5 sm:px-3 rounded-lg font-semibold shadow-xs transition-colors cursor-pointer border border-white/40"
+                title="Trocar usuário ou fazer login"
+              >
+                <UserCheck className="w-4 h-4 text-sky-700 flex-shrink-0" />
+                <div className="text-left hidden sm:block">
+                  <div className="text-[11px] leading-none font-bold text-slate-900">
+                    {currentUser ? currentUser.nome : 'Fazer Login'}
+                  </div>
+                  <div className="text-[9px] text-sky-700 font-medium leading-tight">
+                    {currentUser ? currentUser.cargo : 'Acesso Restrito'}
+                  </div>
                 </div>
-                <div className="text-[9px] text-sky-700 font-medium leading-tight">
-                  {currentUser ? currentUser.cargo : 'Acesso Restrito'}
-                </div>
-              </div>
-              <ChevronDown className="w-3 h-3 text-slate-500 hidden sm:block" />
-            </button>
+                <ChevronDown className="w-3 h-3 text-slate-500 hidden sm:block" />
+              </button>
+              {currentUser && (
+                <button
+                  onClick={onLogout}
+                  className="px-2 py-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-[10px] font-bold transition-colors cursor-pointer border border-rose-200"
+                  title="Sair do sistema"
+                >
+                  Sair
+                </button>
+              )}
+            </div>
 
             {/* Mobile Menu Toggle */}
             <button

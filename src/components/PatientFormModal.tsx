@@ -109,7 +109,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       setPontuacaoManual(patientToEdit.pontuacao);
     } else {
       setNome('');
-      setProntuario(`HMWG-${Math.floor(10000 + Math.random() * 90000)}`);
+      setProntuario('');
       setDataNascimento('');
       setIdade(0);
       setDataInternacao(new Date().toISOString().split('T')[0]);
@@ -158,7 +158,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       leitoId: bed.id,
       setorId: bed.setorId,
       nome: nome.trim(),
-      prontuario: prontuario.trim() || `HMWG-${Math.floor(10000 + Math.random() * 90000)}`,
+      prontuario: prontuario.trim(),
       dataNascimento: dataNascimento || undefined,
       idade: Number(idade) || 0,
       dataInternacao,
@@ -255,8 +255,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="ex: HMWG-84192"
+                  placeholder="Preencher manualmente"
                   value={prontuario}
                   onChange={(e) => setProntuario(e.target.value)}
                   className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"

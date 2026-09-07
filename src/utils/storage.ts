@@ -7,15 +7,22 @@ import {
   INITIAL_SHIFT_CONFIGS,
   INITIAL_TECHNICIANS,
   INITIAL_VACANCY_REQUESTS,
+  INITIAL_SYSTEM_USERS,
+  DEFAULT_SECURITY_SETTINGS,
 } from '../data/initialData';
 import {
+  AccessLog,
+  AuthUser,
   Bed,
   Employee,
   Nurse,
   Patient,
   Sector,
+  SecuritySettings,
   ShiftConfig,
+  SystemUser,
   Technician,
+  UserLockStatus,
   VacancyRequest,
 } from '../types';
 import {
@@ -47,6 +54,7 @@ import {
   deleteSector as gsDeleteSector,
   deleteBed as gsDeleteBed,
   deletePatient as gsDeletePatient,
+  deleteEmployee as gsDeleteEmployee,
 } from './googleSheets';
 
 const STORAGE_KEYS = {
@@ -56,11 +64,16 @@ const STORAGE_KEYS = {
   NURSES: 'hmwg_nursing_nurses_v1',
   TECHNICIANS: 'hmwg_nursing_technicians_v1',
   EMPLOYEES: 'hmwg_nursing_employees_v1',
+  SYSTEM_USERS: 'hmwg_nursing_system_users_v1',
   SHIFTS: 'hmwg_nursing_shifts_v1',
   VACANCIES: 'hmwg_nursing_vacancies_v1',
   CURRENT_USER: 'hmwg_nursing_current_user_v1',
   SELECTED_SECTOR: 'hmwg_nursing_selected_sector_v1',
   SYNC_STATUS: 'hmwg_nursing_sync_status_v1',
+  SECURITY_SETTINGS: 'hmwg_nursing_security_settings_v1',
+  ACCESS_LOGS: 'hmwg_nursing_access_logs_v1',
+  LOCK_STATUSES: 'hmwg_nursing_lock_statuses_v1',
+  LAST_ACTIVITY: 'hmwg_nursing_last_activity_v1',
 };
 
 function getItem<T>(key: string, defaultValue: T): T {
@@ -199,13 +212,23 @@ export const Storage = {
     if (USE_GOOGLE_SHEETS) await saveEmployee(emp);
   },
   deleteEmployeeCloud: async (id: string) => {
-    if (USE_GOOGLE_SHEETS) await deleteEmployee(id);
+    if (USE_GOOGLE_SHEETS) await gsDeleteEmployee(id);
   },
   saveNurseCloud: async (nurse: Nurse) => {
     if (USE_GOOGLE_SHEETS) await saveNurse(nurse);
   },
   saveTechnicianCloud: async (tech: Technician) => {
     if (USE_GOOGLE_SHEETS) await saveTechnician(tech);
+  },
+  saveSystemUserCloud: async (user: SystemUser) => {
+    // System users are stored locally only (no Google Sheets integration for now)
+    saveLocally(STORAGE_KEYS.SYSTEM_USERS, getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, []).map(u => u.id === user.id ? user : u).length > 0
+      ? getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, []).map(u => u.id === user.id ? user : u)
+      : [user, ...getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, [])]);
+  },
+  deleteSystemUserCloud: async (id: string) => {
+    // System users are stored locally only
+    saveLocally(STORAGE_KEYS.SYSTEM_USERS, getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, []).filter(u => u.id !== id));
   },
 
   // Verificar status da sincronização
@@ -229,14 +252,147 @@ export const Storage = {
   getEmployees: (): Employee[] => getItem<Employee[]>(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES),
   saveEmployees: (employees: Employee[]) => saveLocally(STORAGE_KEYS.EMPLOYEES, employees),
 
+  getSystemUsers: (): SystemUser[] => {
+    const users = getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, []);
+    if (!users || users.length === 0) {
+      saveLocally(STORAGE_KEYS.SYSTEM_USERS, INITIAL_SYSTEM_USERS);
+      return INITIAL_SYSTEM_USERS;
+    }
+    // Garante que o acesso admin exista sempre no sistema
+    if (!users.some((u) => u.email === 'admin' || u.email === 'admin@hmwg.rn.gov.br')) {
+      const merged = [
+        ...INITIAL_SYSTEM_USERS.filter((u) => u.email === 'admin' || u.email === 'admin@hmwg.rn.gov.br'),
+        ...users,
+      ];
+      saveLocally(STORAGE_KEYS.SYSTEM_USERS, merged);
+      return merged;
+    }
+    return users;
+  },
+  saveSystemUsers: (users: SystemUser[]) => saveLocally(STORAGE_KEYS.SYSTEM_USERS, users),
+
   getShifts: (): ShiftConfig[] => getItem<ShiftConfig[]>(STORAGE_KEYS.SHIFTS, INITIAL_SHIFT_CONFIGS),
   saveShifts: (shifts: ShiftConfig[]) => saveLocally(STORAGE_KEYS.SHIFTS, shifts),
 
   getVacancies: (): VacancyRequest[] => getItem<VacancyRequest[]>(STORAGE_KEYS.VACANCIES, INITIAL_VACANCY_REQUESTS),
   saveVacancies: (vacancies: VacancyRequest[]) => saveLocally(STORAGE_KEYS.VACANCIES, vacancies),
 
-  getCurrentUser: (): Nurse | null => getItem<Nurse | null>(STORAGE_KEYS.CURRENT_USER, INITIAL_NURSES[0]),
-  saveCurrentUser: (nurse: Nurse | null) => setItem(STORAGE_KEYS.CURRENT_USER, nurse),
+  getCurrentUser: (): AuthUser | null => getItem<AuthUser | null>(STORAGE_KEYS.CURRENT_USER, null),
+  saveCurrentUser: (user: AuthUser | null) => setItem(STORAGE_KEYS.CURRENT_USER, user),
+
+  // Configurações de Segurança e Limite de Acesso
+  getSecuritySettings: (): SecuritySettings =>
+    getItem<SecuritySettings>(STORAGE_KEYS.SECURITY_SETTINGS, DEFAULT_SECURITY_SETTINGS),
+  saveSecuritySettings: (settings: SecuritySettings) =>
+    saveLocally(STORAGE_KEYS.SECURITY_SETTINGS, settings),
+
+  // Auditoria e Logs de Acesso
+  getAccessLogs: (): AccessLog[] => getItem<AccessLog[]>(STORAGE_KEYS.ACCESS_LOGS, []),
+  addAccessLog: (log: Omit<AccessLog, 'id' | 'dataHora'>) => {
+    const logs = getItem<AccessLog[]>(STORAGE_KEYS.ACCESS_LOGS, []);
+    const newEntry: AccessLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      dataHora: new Date().toLocaleString('pt-BR'),
+      ...log,
+    };
+    saveLocally(STORAGE_KEYS.ACCESS_LOGS, [newEntry, ...logs].slice(0, 150));
+  },
+  clearAccessLogs: () => saveLocally(STORAGE_KEYS.ACCESS_LOGS, []),
+
+  // Limite de Tentativas e Bloqueio de Usuário
+  getUserLockStatuses: (): Record<string, UserLockStatus> =>
+    getItem<Record<string, UserLockStatus>>(STORAGE_KEYS.LOCK_STATUSES, {}),
+
+  isUserLocked: (identifier: string): { locked: boolean; reason?: string } => {
+    const key = identifier.toLowerCase().trim();
+    const statuses = getItem<Record<string, UserLockStatus>>(STORAGE_KEYS.LOCK_STATUSES, {});
+    const userStatus = statuses[key];
+    if (!userStatus || !userStatus.isLocked) return { locked: false };
+
+    if (userStatus.lockedUntil) {
+      const lockExpiry = new Date(userStatus.lockedUntil).getTime();
+      if (Date.now() > lockExpiry) {
+        // Bloqueio temporário expirou
+        userStatus.isLocked = false;
+        userStatus.failedAttempts = 0;
+        delete userStatus.lockedUntil;
+        statuses[key] = userStatus;
+        saveLocally(STORAGE_KEYS.LOCK_STATUSES, statuses);
+        return { locked: false };
+      }
+      const remainingMinutes = Math.max(1, Math.ceil((lockExpiry - Date.now()) / 60000));
+      return {
+        locked: true,
+        reason: `Acesso bloqueado por exceder o limite de tentativas de senha. Aguarde ${remainingMinutes} minuto(s) ou solicite desbloqueio ao administrador.`,
+      };
+    }
+
+    return {
+      locked: true,
+      reason: 'Acesso bloqueado por excesso de tentativas de senha incorreta. Solicite desbloqueio ao administrador.',
+    };
+  },
+
+  recordFailedAttempt: (
+    identifier: string,
+    maxAttempts: number = 5,
+    durationMinutes: number = 15
+  ): { locked: boolean; remainingAttempts: number; failedAttempts: number } => {
+    const key = identifier.toLowerCase().trim();
+    const statuses = getItem<Record<string, UserLockStatus>>(STORAGE_KEYS.LOCK_STATUSES, {});
+    const current = statuses[key] || { email: key, failedAttempts: 0, isLocked: false };
+    current.failedAttempts = (current.failedAttempts || 0) + 1;
+
+    if (current.failedAttempts >= maxAttempts) {
+      current.isLocked = true;
+      if (durationMinutes > 0) {
+        current.lockedUntil = new Date(Date.now() + durationMinutes * 60000).toISOString();
+      }
+      statuses[key] = current;
+      saveLocally(STORAGE_KEYS.LOCK_STATUSES, statuses);
+      return { locked: true, remainingAttempts: 0, failedAttempts: current.failedAttempts };
+    }
+
+    statuses[key] = current;
+    saveLocally(STORAGE_KEYS.LOCK_STATUSES, statuses);
+    return {
+      locked: false,
+      remainingAttempts: Math.max(0, maxAttempts - current.failedAttempts),
+      failedAttempts: current.failedAttempts,
+    };
+  },
+
+  resetFailedAttempts: (identifier: string) => {
+    const key = identifier.toLowerCase().trim();
+    const statuses = getItem<Record<string, UserLockStatus>>(STORAGE_KEYS.LOCK_STATUSES, {});
+    if (statuses[key]) {
+      statuses[key].failedAttempts = 0;
+      statuses[key].isLocked = false;
+      delete statuses[key].lockedUntil;
+      saveLocally(STORAGE_KEYS.LOCK_STATUSES, statuses);
+    }
+  },
+
+  unlockUser: (identifier: string) => {
+    const key = identifier.toLowerCase().trim();
+    const statuses = getItem<Record<string, UserLockStatus>>(STORAGE_KEYS.LOCK_STATUSES, {});
+    if (statuses[key]) {
+      statuses[key].failedAttempts = 0;
+      statuses[key].isLocked = false;
+      delete statuses[key].lockedUntil;
+      saveLocally(STORAGE_KEYS.LOCK_STATUSES, statuses);
+    }
+  },
+
+  // Rastreamento de Inatividade (30 minutos padrão)
+  getLastActivity: (): number => {
+    const raw = localStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY);
+    return raw ? parseInt(raw, 10) : Date.now();
+  },
+
+  saveLastActivity: (timestamp: number = Date.now()) => {
+    localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, timestamp.toString());
+  },
 
   getSelectedSectorId: (): string => getItem<string>(STORAGE_KEYS.SELECTED_SECTOR, 'sec-uti'),
   saveSelectedSectorId: (id: string) => setItem(STORAGE_KEYS.SELECTED_SECTOR, id),

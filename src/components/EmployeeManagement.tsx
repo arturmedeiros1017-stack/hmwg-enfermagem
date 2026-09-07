@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { Employee, EmployeeCategory, EmployeeStatus, Sector } from '../types';
+import { Employee, EmployeeCategory, EmployeeStatus, Sector, SystemUser } from '../types';
 import { HMWGLogo } from './HMWGLogo';
 import { EmployeeFormModal } from './EmployeeFormModal';
 import { EmployeeBadgeModal } from './EmployeeBadgeModal';
+import { PasswordChangeModal } from './PasswordChangeModal';
+import { SystemAccessModal } from './SystemAccessModal';
 import {
   Users,
   UserPlus,
@@ -23,22 +25,39 @@ import {
   List,
   Power,
   RotateCcw,
+  Key,
+  Shield,
 } from 'lucide-react';
+
+const ACCESS_LEVELS = [
+  { value: 'Administrador Total', color: 'bg-rose-100 text-rose-800 border-rose-200' },
+  { value: 'Administrador Setor', color: 'bg-amber-100 text-amber-800 border-amber-200' },
+  { value: 'Enfermeiro(a)', color: 'bg-sky-100 text-sky-800 border-sky-200' },
+  { value: 'Técnico(a) de Enfermagem', color: 'bg-cyan-100 text-cyan-800 border-cyan-200' },
+  { value: 'Médico(a)', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
+  { value: 'Visualização Restrita', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+];
 
 interface EmployeeManagementProps {
   employees: Employee[];
   sectors: Sector[];
+  systemUsers: SystemUser[];
   onSaveEmployee: (employee: Employee) => void | Promise<void>;
   onDeleteEmployee: (employeeId: string) => void | Promise<void>;
   onToggleStatus: (employeeId: string) => void | Promise<void>;
+  onSaveSystemUser: (user: SystemUser) => void | Promise<void>;
+  onDeleteSystemUser: (userId: string) => void;
 }
 
 export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   employees,
   sectors,
+  systemUsers,
   onSaveEmployee,
   onDeleteEmployee,
   onToggleStatus,
+  onSaveSystemUser,
+  onDeleteSystemUser,
 }) => {
   // Filters and Search State
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,8 +69,12 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   // Modals State
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isBadgeModalOpen, setIsBadgeModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isSystemAccessModalOpen, setIsSystemAccessModalOpen] = useState(false);
   const [selectedEmployeeForEdit, setSelectedEmployeeForEdit] = useState<Employee | null>(null);
   const [selectedEmployeeForBadge, setSelectedEmployeeForBadge] = useState<Employee | null>(null);
+  const [selectedEmployeeForPassword, setSelectedEmployeeForPassword] = useState<Employee | null>(null);
+  const [selectedSystemUserForEdit, setSelectedSystemUserForEdit] = useState<SystemUser | null>(null);
 
   // Filtered Employees
   const filteredEmployees = useMemo(() => {
@@ -112,6 +135,21 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
   const handleOpenBadge = (employee: Employee) => {
     setSelectedEmployeeForBadge(employee);
     setIsBadgeModalOpen(true);
+  };
+
+  const handleOpenPassword = (employee: Employee) => {
+    setSelectedEmployeeForPassword(employee);
+    setIsPasswordModalOpen(true);
+  };
+
+  const handleOpenNewSystemUser = () => {
+    setSelectedSystemUserForEdit(null);
+    setIsSystemAccessModalOpen(true);
+  };
+
+  const handleOpenEditSystemUser = (user: SystemUser) => {
+    setSelectedSystemUserForEdit(user);
+    setIsSystemAccessModalOpen(true);
   };
 
   const handleDelete = (emp: Employee) => {
@@ -493,6 +531,13 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
+                    <button
+                      onClick={() => handleOpenPassword(emp)}
+                      className="p-1.5 text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                      title="Alterar Senha"
+                    >
+                      <Key className="w-4 h-4" />
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -581,6 +626,13 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
+                            onClick={() => handleOpenPassword(emp)}
+                            className="p-1.5 text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Alterar Senha"
+                          >
+                            <Key className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleDelete(emp)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="Excluir"
@@ -598,6 +650,86 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
         </div>
       )}
 
+      {/* Acessos ao Sistema */}
+      <div className="mt-8 bg-white rounded-2xl border border-slate-200 shadow-xs p-4 sm:p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Acessos ao Sistema</h3>
+              <p className="text-[11px] text-slate-500">
+                {systemUsers.length} usuário(s) cadastrado(s)
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleOpenNewSystemUser}
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span className="hidden sm:inline">Novo Acesso</span>
+          </button>
+        </div>
+
+        {systemUsers.length === 0 ? (
+          <div className="text-center py-8 text-slate-400">
+            <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-xs font-medium">Nenhum acesso cadastrado</p>
+            <p className="text-[10px] text-slate-400">Clique em "Novo Acesso" para adicionar um usuário</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                  <th className="py-2.5 px-3">Nome</th>
+                  <th className="py-2.5 px-3">E-mail</th>
+                  <th className="py-2.5 px-3">Nível de Acesso</th>
+                  <th className="py-2.5 px-3">Setores</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {systemUsers.map((su) => {
+                  const level = ACCESS_LEVELS.find((l) => l.value === su.nivelAcesso);
+                  return (
+                    <tr key={su.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">{su.nome}</td>
+                      <td className="py-2.5 px-3 text-slate-600">{su.email}</td>
+                      <td className="py-2.5 px-3">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${level?.color || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                          {su.nivelAcesso}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-600">
+                        {su.nivelAcesso === 'Administrador Total' ? 'Todos' : `${su.setorPermitidoIds.length} setor(es)`}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${su.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                          {su.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          onClick={() => handleOpenEditSystemUser(su)}
+                          className="p-1.5 text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          title="Editar Acesso"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Global Modals */}
       <EmployeeFormModal
         isOpen={isFormModalOpen}
@@ -611,6 +743,23 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
         isOpen={isBadgeModalOpen}
         onClose={() => setIsBadgeModalOpen(false)}
         employee={selectedEmployeeForBadge}
+        sectors={sectors}
+      />
+
+      <PasswordChangeModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        employee={selectedEmployeeForPassword}
+        onSave={onSaveEmployee}
+      />
+
+      <SystemAccessModal
+        isOpen={isSystemAccessModalOpen}
+        onClose={() => setIsSystemAccessModalOpen(false)}
+        onSave={onSaveSystemUser}
+        onDelete={onDeleteSystemUser}
+        userToEdit={selectedSystemUserForEdit}
+        existingUsers={systemUsers}
         sectors={sectors}
       />
     </div>

@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
+  AuthUser,
   Bed,
   BedStatus,
   Employee,
@@ -12,6 +13,7 @@ import {
   Patient,
   Sector,
   ShiftConfig,
+  SystemUser,
   Technician,
   VacancyRequest,
 } from './types';
@@ -25,8 +27,10 @@ import { VacancyRequests } from './components/VacancyRequests';
 import { ShiftManagement } from './components/ShiftManagement';
 import { EmployeeManagement } from './components/EmployeeManagement';
 import { SectorManagement } from './components/SectorManagement';
+import { AccessControlManagement } from './components/AccessControlManagement';
 import { PatientFormModal } from './components/PatientFormModal';
 import { LoginModal } from './components/LoginModal';
+import { IdleLockModal } from './components/IdleLockModal';
 import { HMWGLogo } from './components/HMWGLogo';
 import {
   RotateCcw,
@@ -45,16 +49,19 @@ export default function App() {
   const [nurses, setNurses] = useState<Nurse[]>(() => Storage.getNurses());
   const [technicians, setTechnicians] = useState<Technician[]>(() => Storage.getTechnicians());
   const [employees, setEmployees] = useState<Employee[]>(() => Storage.getEmployees());
+  const [systemUsers, setSystemUsers] = useState<SystemUser[]>(() => Storage.getSystemUsers());
   const [shifts, setShifts] = useState<ShiftConfig[]>(() => Storage.getShifts());
   const [vacancies, setVacancies] = useState<VacancyRequest[]>(() => Storage.getVacancies());
-  const [currentUser, setCurrentUser] = useState<Nurse | null>(() => Storage.getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<AuthUser | Nurse | null>(() => Storage.getCurrentUser());
   const [selectedSectorId, setSelectedSectorId] = useState<string>(() => Storage.getSelectedSectorId());
 
-  // UI Navigation State com persistência no LocalStorage
-  const [activeTab, setActiveTab] = useState<'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao'>(() => {
+  // UI Navigation State com persistência no LocalStorage (inclui nova aba 'acessos')
+  const [activeTab, setActiveTab] = useState<
+    'mapa' | 'atribuicao' | 'vagas' | 'plantao' | 'funcionarios' | 'setores' | 'impressao' | 'acessos'
+  >(() => {
     try {
       const saved = localStorage.getItem('hmwg_active_tab');
-      const validTabs = ['mapa', 'atribuicao', 'vagas', 'plantao', 'funcionarios', 'setores', 'impressao'];
+      const validTabs = ['mapa', 'atribuicao', 'vagas', 'plantao', 'funcionarios', 'setores', 'impressao', 'acessos'];
       if (saved && validTabs.includes(saved)) {
         return saved as any;
       }
@@ -62,6 +69,16 @@ export default function App() {
       // Ignora erro no localStorage
     }
     return 'mapa';
+  });
+
+  // Estado de Bloqueio por Ociosidade (Inatividade de 30 minutos)
+  const [isIdleLocked, setIsIdleLocked] = useState<boolean>(() => {
+    const user = Storage.getCurrentUser();
+    if (!user) return false;
+    const settings = Storage.getSecuritySettings();
+    const timeoutMs = (settings.idleTimeoutMinutes || 30) * 60 * 1000;
+    const last = Storage.getLastActivity();
+    return Date.now() - last >= timeoutMs;
   });
 
   // Salva aba ativa sempre que ela mudar
@@ -73,8 +90,52 @@ export default function App() {
     }
   }, [activeTab]);
 
+  // Monitoramento de Ociosidade e Inatividade (30 minutos)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let lastRecorded = Date.now();
+
+    const handleUserActivity = () => {
+      const now = Date.now();
+      // Throttle de gravação a cada 5 segundos
+      if (now - lastRecorded > 5000) {
+        lastRecorded = now;
+        if (!isIdleLocked) {
+          Storage.saveLastActivity(now);
+        }
+      }
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    events.forEach((evt) => window.addEventListener(evt, handleUserActivity, { passive: true }));
+
+    // Verificação de timeout a cada 5 segundos
+    const interval = setInterval(() => {
+      if (isIdleLocked) return;
+      const settings = Storage.getSecuritySettings();
+      const timeoutMs = (settings.idleTimeoutMinutes || 30) * 60 * 1000;
+      const last = Storage.getLastActivity();
+
+      if (Date.now() - last >= timeoutMs) {
+        setIsIdleLocked(true);
+        Storage.addAccessLog({
+          usuarioNome: currentUser.nome,
+          usuarioEmail: currentUser.email,
+          tipoEvento: 'SESSAO_EXPIRADA_OCIOSA',
+          detalhes: `Sessão bloqueada automaticamente após ${settings.idleTimeoutMinutes || 30} minutos de ociosidade no terminal.`,
+        });
+      }
+    }, 5000);
+
+    return () => {
+      events.forEach((evt) => window.removeEventListener(evt, handleUserActivity));
+      clearInterval(interval);
+    };
+  }, [currentUser, isIdleLocked]);
+
   // Modals States
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(() => !Storage.getCurrentUser());
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [selectedBedForPatient, setSelectedBedForPatient] = useState<Bed | null>(null);
   const [selectedPatientForEdit, setSelectedPatientForEdit] = useState<Patient | null>(null);
@@ -102,7 +163,9 @@ export default function App() {
   const isInitialSyncDone = useRef(false);
   const isPushing = useRef(false);
   const lastLocalMutationTime = useRef<number>(0);
+  const hasMutation = useRef(false);
 
+  // Push to cloud only after a user action (2s debounce)
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setSyncToast({ show: true, message, type });
     setTimeout(() => {
@@ -188,39 +251,41 @@ export default function App() {
     }
   }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies]);
 
-  // Initial mount sync & visibility / interval auto-pull
+  // Push to cloud on user action (2s debounce after mutation)
   useEffect(() => {
-    pullFromCloud(false);
-
-    // Pull when tab becomes visible (user returns to mobile browser)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        pullFromCloud(true);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Periodic pull every 20 seconds so mobile stays updated with PC
-    const interval = setInterval(() => {
-      pullFromCloud(true);
-    }, 20000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(interval);
-    };
-  }, [pullFromCloud]);
-
-  // Debounced auto-push when data changes AFTER initial sync has completed
-  useEffect(() => {
-    if (!isInitialSyncDone.current || !Storage.isUsingGoogleSheets()) return;
-
-    const timer = setTimeout(() => {
-      pushToCloud();
-    }, 2000);
-
+    if (!isInitialSyncDone.current || !Storage.isUsingGoogleSheets() || !hasMutation.current) return;
+    hasMutation.current = false;
+    const timer = setTimeout(() => { pushToCloud(); }, 2000);
     return () => clearTimeout(timer);
   }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, pushToCloud]);
+
+  // Sync only triggered explicitly by user actions (save, edit, delete)
+
+  // Session timeout: logout após 30 minutos de inatividade
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const TIMEOUT_MS = 30 * 60 * 1000;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const resetTimeout = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setCurrentUser(null);
+        setIsLoginOpen(true);
+        showToast('Sessão expirada por inatividade. Faça login novamente.', 'error');
+      }, TIMEOUT_MS);
+    };
+
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((event) => document.addEventListener(event, resetTimeout, { passive: true }));
+    resetTimeout();
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach((event) => document.removeEventListener(event, resetTimeout));
+    };
+  }, [currentUser, showToast]);
 
   // Current Active Sector & Shift
   const currentSector = sectors.find((s) => s.id === selectedSectorId) || sectors[0];
@@ -243,6 +308,8 @@ export default function App() {
   };
 
   const handleSavePatient = (savedPatient: Patient) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setPatients((prev) => {
       const exists = prev.some((p) => p.id === savedPatient.id);
       if (exists) {
@@ -258,6 +325,8 @@ export default function App() {
   };
 
   const handleDischargePatient = (patientId: string, bedId: string) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setPatients((prev) => prev.filter((p) => p.id !== patientId));
     setBeds((prev) =>
       prev.map((b) => (b.id === bedId ? { ...b, status: 'DESOCUPADO' } : b))
@@ -266,6 +335,8 @@ export default function App() {
 
   // Handlers for Beds
   const handleUpdateBedStatus = (bedId: string, status: BedStatus, motivo?: string) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setBeds((prev) =>
       prev.map((b) => {
         if (b.id === bedId) {
@@ -289,6 +360,8 @@ export default function App() {
   };
 
   const handleAddNewBed = (numero: string, setorId: string) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     const newBed: Bed = {
       id: `bed-${Date.now()}`,
       numero,
@@ -305,6 +378,8 @@ export default function App() {
   };
 
   const handleAddVacancyRequest = (req: VacancyRequest) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setVacancies((prev) => [req, ...prev]);
     // If request has a targeted bed, set active indicator on that bed
     if (req.leitoDesejadoId) {
@@ -318,6 +393,8 @@ export default function App() {
     id: string,
     status: 'PENDENTE' | 'APROVADA' | 'AGUARDANDO_DESOCUPACAO' | 'CANCELADA' | 'CONCLUIDA'
   ) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setVacancies((prev) =>
       prev.map((v) => (v.id === id ? { ...v, status } : v))
     );
@@ -325,6 +402,8 @@ export default function App() {
 
   // Handlers for Shift Config
   const handleUpdateShiftConfig = (updated: ShiftConfig) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setShifts((prev) => {
       const idx = prev.findIndex((s) => s.id === updated.id);
       if (idx >= 0) {
@@ -338,12 +417,16 @@ export default function App() {
 
   // Handlers for Technicians
   const handleToggleTechnicianPresence = (techId: string) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setTechnicians((prev) =>
       prev.map((t) => (t.id === techId ? { ...t, presenteNoPlantao: !t.presenteNoPlantao } : t))
     );
   };
 
   const handleAddNewTechnician = (nome: string, coren: string) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     const techId = `tec-${Date.now()}`;
     const formattedNome = nome.startsWith('Téc.') ? nome : `Téc. ${nome}`;
     const newTech: Technician = {
@@ -378,6 +461,8 @@ export default function App() {
   };
 
   const handleAddNewNurse = (newNurse: Nurse) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setNurses((prev) => [...prev, newNurse]);
 
     // Sincroniza com employees
@@ -412,6 +497,8 @@ export default function App() {
 
   // Handlers for Sectors
   const handleSaveSector = (sector: Sector) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setSectors((prev) => {
       const idx = prev.findIndex((s) => s.id === sector.id);
       if (idx >= 0) {
@@ -424,6 +511,8 @@ export default function App() {
   };
 
   const handleDeleteSector = (sectorId: string) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setBeds((prev) => prev.filter((b) => b.setorId !== sectorId));
     setSectors((prev) => prev.filter((s) => s.id !== sectorId));
     if (selectedSectorId === sectorId) {
@@ -433,6 +522,8 @@ export default function App() {
 
   // Handlers for Beds (CRUD from SectorManagement)
   const handleSaveBedFromSectorMgmt = (bed: Bed) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setBeds((prev) => {
       const idx = prev.findIndex((b) => b.id === bed.id);
       if (idx >= 0) {
@@ -445,12 +536,16 @@ export default function App() {
   };
 
   const handleDeleteBed = (bedId: string) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     setBeds((prev) => prev.filter((b) => b.id !== bedId));
     setPatients((prev) => prev.filter((p) => p.leitoId !== bedId));
   };
 
   // Handler for CSV Import
   const handleImportCsv = (type: 'setores' | 'leitos' | 'pacientes', data: any[]) => {
+    hasMutation.current = true;
+    lastLocalMutationTime.current = Date.now();
     if (type === 'setores') {
       setSectors((prev) => {
         const existingIds = new Set(prev.map((s) => s.id));
@@ -667,6 +762,56 @@ export default function App() {
     }
   };
 
+  // Handlers for System Users (Acessos ao Sistema)
+  const handleSaveSystemUser = async (savedUser: SystemUser) => {
+    lastLocalMutationTime.current = Date.now();
+    isPushing.current = true;
+
+    const currentUsers = Storage.getSystemUsers();
+    const idx = currentUsers.findIndex((u) => u.id === savedUser.id);
+    const updatedUsers = idx >= 0
+      ? currentUsers.map((u) => (u.id === savedUser.id ? savedUser : u))
+      : [savedUser, ...currentUsers];
+
+    Storage.saveSystemUsers(updatedUsers);
+    setSystemUsers(updatedUsers);
+
+    showToast(`Acesso de ${savedUser.nome} salvo com sucesso!`, 'success');
+
+    try {
+      if (Storage.isUsingGoogleSheets()) {
+        await Storage.saveSystemUserCloud(savedUser);
+        setLastSyncTime(new Date());
+      }
+    } catch (err) {
+      console.warn('Sincronização em nuvem do usuário do sistema continuará em background:', err);
+    } finally {
+      isPushing.current = false;
+    }
+  };
+
+  const handleDeleteSystemUser = async (userId: string) => {
+    lastLocalMutationTime.current = Date.now();
+    isPushing.current = true;
+
+    const currentUsers = Storage.getSystemUsers();
+    const updated = currentUsers.filter((u) => u.id !== userId);
+    Storage.saveSystemUsers(updated);
+    setSystemUsers(updated);
+
+    showToast('Acesso removido com sucesso!', 'success');
+
+    try {
+      if (Storage.isUsingGoogleSheets()) {
+        await Storage.deleteSystemUserCloud(userId);
+      }
+    } catch (err) {
+      console.error('Erro ao excluir usuário do sistema na nuvem:', err);
+    } finally {
+      isPushing.current = false;
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 selection:bg-sky-600 selection:text-white overflow-x-hidden">
       {/* Primary Header with HMWG Logo & Hospital Navigation */}
@@ -683,6 +828,10 @@ export default function App() {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onOpenLogin={() => setIsLoginOpen(true)}
+        onLogout={() => {
+          setCurrentUser(null);
+          setIsLoginOpen(true);
+        }}
         isSyncing={isSyncing}
         lastSyncTime={lastSyncTime}
         onManualSync={() => pullFromCloud(false)}
@@ -748,9 +897,12 @@ export default function App() {
           <EmployeeManagement
             employees={employees}
             sectors={sectors}
+            systemUsers={systemUsers}
             onSaveEmployee={handleSaveEmployee}
             onDeleteEmployee={handleDeleteEmployee}
             onToggleStatus={handleToggleEmployeeStatus}
+            onSaveSystemUser={handleSaveSystemUser}
+            onDeleteSystemUser={handleDeleteSystemUser}
           />
         )}
 
@@ -777,6 +929,16 @@ export default function App() {
             onBack={() => setActiveTab('atribuicao')}
           />
         )}
+
+        {activeTab === 'acessos' && (
+          <AccessControlManagement
+            systemUsers={systemUsers}
+            sectors={sectors}
+            onSaveSystemUser={handleSaveSystemUser}
+            onDeleteSystemUser={handleDeleteSystemUser}
+            onRefresh={() => setSystemUsers(Storage.getSystemUsers())}
+          />
+        )}
       </main>
 
       {/* Global Modals */}
@@ -791,10 +953,31 @@ export default function App() {
 
       <LoginModal
         isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
+        onClose={() => { if (currentUser) setIsLoginOpen(false); }}
         nurses={nurses}
+        systemUsers={systemUsers}
+        employees={employees}
         currentUser={currentUser}
-        onLoginSuccess={(nurse) => setCurrentUser(nurse)}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setIsLoginOpen(false);
+          setIsIdleLocked(false);
+          Storage.saveLastActivity(Date.now());
+        }}
+      />
+
+      <IdleLockModal
+        isOpen={isIdleLocked && currentUser !== null}
+        currentUser={currentUser}
+        onUnlock={() => {
+          setIsIdleLocked(false);
+          Storage.saveLastActivity(Date.now());
+        }}
+        onLogout={() => {
+          setIsIdleLocked(false);
+          setCurrentUser(null);
+          setIsLoginOpen(true);
+        }}
       />
 
       {/* Hospital Footer */}

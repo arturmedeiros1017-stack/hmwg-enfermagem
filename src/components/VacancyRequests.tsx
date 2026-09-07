@@ -44,7 +44,7 @@ export const VacancyRequests: React.FC<VacancyRequestsProps> = ({
 
   // Form states
   const [pacienteNome, setPacienteNome] = useState('');
-  const [prontuario, setProntuario] = useState(`HMWG-${Math.floor(10000 + Math.random() * 90000)}`);
+  const [prontuario, setProntuario] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
   const [idade, setIdade] = useState<number | ''>('');
   const [setorOrigem, setSetorOrigem] = useState('Pronto-Socorro / Sala Vermelha');

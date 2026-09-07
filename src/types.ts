@@ -217,6 +217,71 @@ export interface ShiftConfig {
   observacoesPlantao?: string;
 }
 
+export type AccessLevel =
+  | 'Administrador Total'
+  | 'Administrador Setor'
+  | 'Enfermeiro(a)'
+  | 'Técnico(a) de Enfermagem'
+  | 'Médico(a)'
+  | 'Visualização Restrita';
+
+export interface SystemUser {
+  id: string;
+  nome: string;
+  email: string;
+  senha: string;
+  nivelAcesso: AccessLevel;
+  cargo?: string;
+  setorPermitidoIds: string[]; // Empty = all sectors for Admin Total
+  ativo: boolean;
+  criadoEm: string;
+  ultimoAcesso?: string;
+  bloqueadoAte?: string;
+}
+
+export interface SecuritySettings {
+  maxFailedAttempts: number; // Limite de tentativas de senha incorreta (padrão: 5)
+  lockoutDurationMinutes: number; // Duração do bloqueio em minutos (padrão: 15)
+  idleTimeoutMinutes: number; // Tempo de ociosidade para bloqueio em minutos (30 minutos)
+  requireStrongPassword?: boolean;
+}
+
+export interface AccessLog {
+  id: string;
+  dataHora: string;
+  usuarioNome: string;
+  usuarioEmail: string;
+  tipoEvento:
+    | 'LOGIN_SUCESSO'
+    | 'SENHA_INCORRETA'
+    | 'CONTA_BLOQUEADA'
+    | 'SESSAO_EXPIRADA_OCIOSA'
+    | 'SENHA_ALTERADA'
+    | 'DESBLOQUEIO_MANUAL';
+  detalhes: string;
+  ipOuDispositivo?: string;
+}
+
+export interface UserLockStatus {
+  email: string;
+  failedAttempts: number;
+  isLocked: boolean;
+  lockedUntil?: string; // ISO string
+}
+
+export interface AuthUser {
+  id: string;
+  nome: string;
+  email: string;
+  cargo: string;
+  coren?: string;
+  senha?: string;
+  nivelAcesso?: AccessLevel;
+  setorPermitidoIds?: string[];
+  turno?: string;
+}
+
+
 export interface TechnicianCareAssignment {
   tecnicoId: string;
   tecnicoNome: string;

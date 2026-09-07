@@ -1,4 +1,4 @@
-import { Bed, Employee, Nurse, Patient, Sector, ShiftConfig, Technician, VacancyRequest } from '../types';
+import { Bed, Employee, Nurse, Patient, Sector, SecuritySettings, ShiftConfig, SystemUser, Technician, VacancyRequest } from '../types';
 
 export const INITIAL_SECTORS: Sector[] = [
   {
@@ -673,3 +673,71 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     observacoes: 'Desmame ventilatório, titulação de PEEP e reabilitação motora precoce em UTI.',
   },
 ];
+
+export const INITIAL_SYSTEM_USERS: SystemUser[] = [
+  {
+    id: 'su-admin',
+    nome: 'Administrador do Sistema',
+    email: 'admin',
+    senha: 'admin',
+    nivelAcesso: 'Administrador Total',
+    cargo: 'Administrador Geral HMWG',
+    setorPermitidoIds: [],
+    ativo: true,
+    criadoEm: '2026-01-01T00:00:00.000Z',
+    ultimoAcesso: '2026-09-07 12:00',
+  },
+  {
+    id: 'su-admin-email',
+    nome: 'Administrador HMWG',
+    email: 'admin@hmwg.rn.gov.br',
+    senha: 'admin',
+    nivelAcesso: 'Administrador Total',
+    cargo: 'Administrador Geral HMWG',
+    setorPermitidoIds: [],
+    ativo: true,
+    criadoEm: '2026-01-01T00:00:00.000Z',
+    ultimoAcesso: '2026-09-07 12:00',
+  },
+  {
+    id: 'su-juliana',
+    nome: 'Enf. Juliana Vasconcelos',
+    email: 'juliana.vasconcelos@hmwg.rn.gov.br',
+    senha: 'enfermeira123',
+    nivelAcesso: 'Administrador Total',
+    cargo: 'Enfermeiro Chefe / RT',
+    setorPermitidoIds: [],
+    ativo: true,
+    criadoEm: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'su-carlos',
+    nome: 'Enf. Carlos Eduardo Dantas',
+    email: 'carlos.dantas@hmwg.rn.gov.br',
+    senha: 'enfermeiro123',
+    nivelAcesso: 'Enfermeiro(a)',
+    cargo: 'Enfermeiro Assistencial',
+    setorPermitidoIds: ['sec-uti'],
+    ativo: true,
+    criadoEm: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'su-rodrigo',
+    nome: 'Enf. Rodrigo Alencar Maia',
+    email: 'rodrigo.maia@hmwg.rn.gov.br',
+    senha: 'admin',
+    nivelAcesso: 'Administrador Total',
+    cargo: 'Coordenador de Enfermagem',
+    setorPermitidoIds: [],
+    ativo: true,
+    criadoEm: '2026-01-01T00:00:00.000Z',
+  },
+];
+
+export const DEFAULT_SECURITY_SETTINGS: SecuritySettings = {
+  maxFailedAttempts: 5,
+  lockoutDurationMinutes: 15,
+  idleTimeoutMinutes: 30, // Exatamente 30 minutos ocioso conforme especificação
+  requireStrongPassword: false,
+};
+
