@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AuthUser, Employee, Nurse, SystemUser } from '../types';
 import { Storage } from '../utils/storage';
 import { HMWGLogo } from './HMWGLogo';
-import { Lock, UserCheck, AlertCircle, X, KeyRound, Mail, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Lock, UserCheck, AlertCircle, X, KeyRound, Mail, Eye, EyeOff } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -29,12 +29,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
-
-  const handleQuickAdmin = () => {
-    setEmailOrLogin('admin');
-    setPassword('admin');
-    setError('');
-  };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,24 +229,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </span>
             </div>
           )}
-
-          {/* Dica de Acesso Rápido para Administrador */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-2 text-xs text-slate-700">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-              <div>
-                <span className="font-bold text-slate-800">Administrador:</span>{' '}
-                <span className="text-slate-600">login: <strong>admin</strong> | senha: <strong>admin</strong></span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleQuickAdmin}
-              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded text-[10px] transition-colors border border-indigo-200 cursor-pointer"
-            >
-              Preencher
-            </button>
-          </div>
 
           {error && (
             <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700">
