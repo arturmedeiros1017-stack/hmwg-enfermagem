@@ -385,7 +385,7 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                     <th className="py-3 px-4">Usuário</th>
-                    <th className="py-3 px-4">Login / E-mail</th>
+                    <th className="py-3 px-4">Login de Acesso</th>
                     <th className="py-3 px-4">Nível de Acesso</th>
                     <th className="py-3 px-4">Setores Permitidos</th>
                     <th className="py-3 px-4">Status</th>
@@ -401,7 +401,8 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
                     </tr>
                   ) : (
                     filteredUsers.map((user) => {
-                      const userLock = lockStatuses[user.email.toLowerCase().trim()];
+                      const userIdentifier = (user.login || user.email || '').toLowerCase().trim();
+                      const userLock = lockStatuses[userIdentifier];
                       const isLocked = userLock?.isLocked;
 
                       return (
@@ -410,7 +411,7 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
                             <div className="font-bold text-slate-900">{user.nome}</div>
                             {user.cargo && <div className="text-[10px] text-slate-500">{user.cargo}</div>}
                           </td>
-                          <td className="py-3 px-4 font-mono text-slate-600">{user.email}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-slate-700">{user.login || user.email}</td>
                           <td className="py-3 px-4">
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-slate-100 text-slate-700 border-slate-200">
                               {user.nivelAcesso}
@@ -759,8 +760,8 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
                         <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">{log.dataHora}</td>
                         <td className="py-2.5 px-3 font-bold text-slate-800">
                           {log.usuarioNome}
-                          <span className="block font-normal text-[10px] text-slate-400 font-mono">
-                            {log.usuarioEmail}
+                          <span className="block font-normal text-[10px] text-slate-500 font-mono">
+                            login: {log.usuarioLogin || log.usuarioEmail}
                           </span>
                         </td>
                         <td className="py-2.5 px-3">
@@ -810,9 +811,9 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
             {/* Form */}
             <form onSubmit={handleSavePassword} className="p-5 space-y-4 text-xs">
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-slate-500">Usuário de Login:</span>
+                <span className="text-slate-500">Login de Acesso:</span>
                 <strong className="block text-slate-900 font-mono text-sm">
-                  {targetUserForPassword.email}
+                  {targetUserForPassword.login || targetUserForPassword.email}
                 </strong>
               </div>
 

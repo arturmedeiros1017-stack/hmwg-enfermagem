@@ -259,15 +259,19 @@ export const Storage = {
       return INITIAL_SYSTEM_USERS;
     }
     // Garante que o acesso admin exista sempre no sistema
-    if (!users.some((u) => u.email === 'admin' || u.email === 'admin@hmwg.rn.gov.br')) {
+    if (!users.some((u) => u.login === 'admin' || u.email === 'admin')) {
       const merged = [
-        ...INITIAL_SYSTEM_USERS.filter((u) => u.email === 'admin' || u.email === 'admin@hmwg.rn.gov.br'),
+        ...INITIAL_SYSTEM_USERS.filter((u) => u.login === 'admin'),
         ...users,
       ];
       saveLocally(STORAGE_KEYS.SYSTEM_USERS, merged);
       return merged;
     }
-    return users;
+    // Garante que todo usuário tenha a propriedade login preenchida (se veio de versão anterior com email)
+    return users.map((u) => ({
+      ...u,
+      login: u.login || u.email?.split('@')[0] || u.email || 'usuario',
+    }));
   },
   saveSystemUsers: (users: SystemUser[]) => saveLocally(STORAGE_KEYS.SYSTEM_USERS, users),
 
@@ -340,7 +344,7 @@ export const Storage = {
   ): { locked: boolean; remainingAttempts: number; failedAttempts: number } => {
     const key = identifier.toLowerCase().trim();
     const statuses = getItem<Record<string, UserLockStatus>>(STORAGE_KEYS.LOCK_STATUSES, {});
-    const current = statuses[key] || { email: key, failedAttempts: 0, isLocked: false };
+    const current = statuses[key] || { login: key, failedAttempts: 0, isLocked: false };
     current.failedAttempts = (current.failedAttempts || 0) + 1;
 
     if (current.failedAttempts >= maxAttempts) {

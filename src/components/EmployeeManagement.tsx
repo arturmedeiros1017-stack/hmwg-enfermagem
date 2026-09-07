@@ -685,7 +685,7 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                   <th className="py-2.5 px-3">Nome</th>
-                  <th className="py-2.5 px-3">E-mail</th>
+                  <th className="py-2.5 px-3">Login</th>
                   <th className="py-2.5 px-3">Nível de Acesso</th>
                   <th className="py-2.5 px-3">Setores</th>
                   <th className="py-2.5 px-3">Status</th>
@@ -698,7 +698,7 @@ export const EmployeeManagement: React.FC<EmployeeManagementProps> = ({
                   return (
                     <tr key={su.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-2.5 px-3 font-bold text-slate-900">{su.nome}</td>
-                      <td className="py-2.5 px-3 text-slate-600">{su.email}</td>
+                      <td className="py-2.5 px-3 text-slate-700 font-mono font-semibold">{su.login || su.email}</td>
                       <td className="py-2.5 px-3">
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${level?.color || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                           {su.nivelAcesso}

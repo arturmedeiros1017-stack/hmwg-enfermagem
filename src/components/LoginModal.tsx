@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AuthUser, Employee, Nurse, SystemUser } from '../types';
 import { Storage } from '../utils/storage';
 import { HMWGLogo } from './HMWGLogo';
-import { Lock, UserCheck, AlertCircle, X, KeyRound, Mail, Eye, EyeOff } from 'lucide-react';
+import { Lock, UserCheck, AlertCircle, X, KeyRound, User, Eye, EyeOff } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -55,13 +55,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     // 3. Procura correspondência
     let matchedUser: AuthUser | null = null;
 
-    // Caso A: Usuário do Sistema (incluindo admin / administrador)
+    // Caso A: Usuário do Sistema (palavra ou número cadastrado)
     const matchedSystemUser = currentSystemUsers.find((su) => {
-      const emailMatch = su.email.toLowerCase() === cleanLogin;
+      const loginMatch = su.login?.toLowerCase() === cleanLogin;
+      const emailMatch = su.email?.toLowerCase() === cleanLogin;
       const isAdminAlias =
         (cleanLogin === 'admin' || cleanLogin === 'administrador') &&
-        (su.email.toLowerCase() === 'admin' || su.email.toLowerCase() === 'admin@hmwg.rn.gov.br');
-      return (emailMatch || isAdminAlias) && su.senha === cleanPassword;
+        (su.login === 'admin' || su.email === 'admin' || su.email === 'admin@hmwg.rn.gov.br');
+      return (loginMatch || emailMatch || isAdminAlias) && su.senha === cleanPassword;
     });
 
     if (matchedSystemUser) {
@@ -72,6 +73,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       matchedUser = {
         id: matchedSystemUser.id,
         nome: matchedSystemUser.nome,
+        login: matchedSystemUser.login || cleanLogin,
         email: matchedSystemUser.email,
         cargo: matchedSystemUser.cargo || matchedSystemUser.nivelAcesso,
         nivelAcesso: matchedSystemUser.nivelAcesso,
@@ -80,11 +82,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
 
     // Caso B: Suporte direto ao usuário admin padrão caso não esteja na lista
-    if (!matchedUser && (cleanLogin === 'admin' || cleanLogin === 'admin@hmwg.rn.gov.br')) {
+    if (!matchedUser && (cleanLogin === 'admin' || cleanLogin === 'administrador')) {
       if (cleanPassword === 'admin' || cleanPassword === 'admin123') {
         matchedUser = {
           id: 'su-admin',
           nome: 'Administrador do Sistema',
+          login: 'admin',
           email: 'admin@hmwg.rn.gov.br',
           cargo: 'Administrador Geral HMWG',
           nivelAcesso: 'Administrador Total',
@@ -92,7 +95,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       }
     }
 
-    // Caso C: Enfermeiros
+    // Caso C: Enfermeiros (login por COREN ou e-mail/nome)
     if (!matchedUser) {
       const matchedNurse = nurses.find((n) => {
         const emailMatch = n.email.toLowerCase() === cleanLogin;
@@ -105,6 +108,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         matchedUser = {
           id: matchedNurse.id,
           nome: matchedNurse.nome,
+          login: matchedNurse.coren || cleanLogin,
           email: matchedNurse.email,
           cargo: matchedNurse.cargo,
           coren: matchedNurse.coren,
@@ -133,6 +137,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         matchedUser = {
           id: matchedEmp.id,
           nome: matchedEmp.nome,
+          login: matchedEmp.matricula || cleanLogin,
           email: matchedEmp.email,
           cargo: matchedEmp.cargo,
           coren: matchedEmp.conselhoNumero,
@@ -147,7 +152,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       Storage.resetFailedAttempts(cleanLogin);
       Storage.addAccessLog({
         usuarioNome: matchedUser.nome,
-        usuarioEmail: matchedUser.email,
+        usuarioLogin: matchedUser.login,
         tipoEvento: 'LOGIN_SUCESSO',
         detalhes: `Login realizado com sucesso como ${matchedUser.cargo}`,
       });
@@ -167,7 +172,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     Storage.addAccessLog({
       usuarioNome: cleanLogin,
-      usuarioEmail: cleanLogin,
+      usuarioLogin: cleanLogin,
       tipoEvento: attemptResult.locked ? 'CONTA_BLOQUEADA' : 'SENHA_INCORRETA',
       detalhes: attemptResult.locked
         ? `Bloqueio por exceder o limite de ${settings.maxFailedAttempts} tentativas de senha incorreta.`
@@ -241,14 +246,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Usuário, E-mail institucional ou COREN
+                Login de Acesso (Palavra ou Número)
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                 <input
                   type="text"
                   required
-                  placeholder="ex: admin ou juliana.vasconcelos@hmwg.rn.gov.br"
+                  placeholder="Digite seu login (ex: admin, 1024, juliana...)"
                   value={emailOrLogin}
                   onChange={(e) => setEmailOrLogin(e.target.value)}
                   className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"

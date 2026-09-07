@@ -678,18 +678,7 @@ export const INITIAL_SYSTEM_USERS: SystemUser[] = [
   {
     id: 'su-admin',
     nome: 'Administrador do Sistema',
-    email: 'admin',
-    senha: 'admin',
-    nivelAcesso: 'Administrador Total',
-    cargo: 'Administrador Geral HMWG',
-    setorPermitidoIds: [],
-    ativo: true,
-    criadoEm: '2026-01-01T00:00:00.000Z',
-    ultimoAcesso: '2026-09-07 12:00',
-  },
-  {
-    id: 'su-admin-email',
-    nome: 'Administrador HMWG',
+    login: 'admin',
     email: 'admin@hmwg.rn.gov.br',
     senha: 'admin',
     nivelAcesso: 'Administrador Total',
@@ -702,6 +691,7 @@ export const INITIAL_SYSTEM_USERS: SystemUser[] = [
   {
     id: 'su-juliana',
     nome: 'Enf. Juliana Vasconcelos',
+    login: 'juliana',
     email: 'juliana.vasconcelos@hmwg.rn.gov.br',
     senha: 'enfermeira123',
     nivelAcesso: 'Administrador Total',
@@ -713,6 +703,7 @@ export const INITIAL_SYSTEM_USERS: SystemUser[] = [
   {
     id: 'su-carlos',
     nome: 'Enf. Carlos Eduardo Dantas',
+    login: 'carlos',
     email: 'carlos.dantas@hmwg.rn.gov.br',
     senha: 'enfermeiro123',
     nivelAcesso: 'Enfermeiro(a)',
@@ -724,6 +715,7 @@ export const INITIAL_SYSTEM_USERS: SystemUser[] = [
   {
     id: 'su-rodrigo',
     nome: 'Enf. Rodrigo Alencar Maia',
+    login: 'rodrigo',
     email: 'rodrigo.maia@hmwg.rn.gov.br',
     senha: 'admin',
     nivelAcesso: 'Administrador Total',

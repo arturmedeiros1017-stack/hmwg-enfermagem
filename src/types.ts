@@ -228,7 +228,8 @@ export type AccessLevel =
 export interface SystemUser {
   id: string;
   nome: string;
-  email: string;
+  login: string; // Palavra ou número para autenticação no sistema
+  email?: string; // Opcional para histórico/compatibilidade
   senha: string;
   nivelAcesso: AccessLevel;
   cargo?: string;
@@ -250,7 +251,8 @@ export interface AccessLog {
   id: string;
   dataHora: string;
   usuarioNome: string;
-  usuarioEmail: string;
+  usuarioLogin: string;
+  usuarioEmail?: string;
   tipoEvento:
     | 'LOGIN_SUCESSO'
     | 'SENHA_INCORRETA'
@@ -263,7 +265,7 @@ export interface AccessLog {
 }
 
 export interface UserLockStatus {
-  email: string;
+  login: string;
   failedAttempts: number;
   isLocked: boolean;
   lockedUntil?: string; // ISO string
@@ -272,7 +274,8 @@ export interface UserLockStatus {
 export interface AuthUser {
   id: string;
   nome: string;
-  email: string;
+  login: string;
+  email?: string;
   cargo: string;
   coren?: string;
   senha?: string;

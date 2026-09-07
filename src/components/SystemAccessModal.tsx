@@ -32,7 +32,7 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<{
     nome: string;
-    email: string;
+    login: string;
     senha: string;
     confirmSenha: string;
     nivelAcesso: AccessLevel;
@@ -40,7 +40,7 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
     ativo: boolean;
   }>({
     nome: '',
-    email: '',
+    login: '',
     senha: '',
     confirmSenha: '',
     nivelAcesso: 'Visualização Restrita',
@@ -59,7 +59,7 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
       setIsEditing(true);
       setFormData({
         nome: userToEdit.nome,
-        email: userToEdit.email,
+        login: userToEdit.login || userToEdit.email || '',
         senha: '',
         confirmSenha: '',
         nivelAcesso: userToEdit.nivelAcesso,
@@ -70,7 +70,7 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
       setIsEditing(false);
       setFormData({
         nome: '',
-        email: '',
+        login: '',
         senha: '',
         confirmSenha: '',
         nivelAcesso: 'Visualização Restrita',
@@ -107,14 +107,14 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
       return;
     }
 
-    if (!formData.email.trim()) {
-      setError('Informe o e-mail.');
+    const cleanLogin = formData.login.trim().toLowerCase();
+    if (!cleanLogin) {
+      setError('Informe o login de acesso (palavra ou número).');
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      setError('E-mail inválido.');
+    if (cleanLogin.length < 2) {
+      setError('O login deve ter pelo menos 2 caracteres.');
       return;
     }
 
@@ -133,11 +133,13 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
       return;
     }
 
-    const emailExists = existingUsers.some(
-      (u) => u.email.toLowerCase() === formData.email.toLowerCase() && u.id !== (userToEdit?.id || '')
+    const loginExists = existingUsers.some(
+      (u) =>
+        ((u.login || u.email || '').toLowerCase() === cleanLogin) &&
+        u.id !== (userToEdit?.id || '')
     );
-    if (emailExists) {
-      setError('Já existe um usuário com este e-mail.');
+    if (loginExists) {
+      setError('Já existe um usuário com este login.');
       return;
     }
 
@@ -152,7 +154,8 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
       const savedUser: SystemUser = {
         id: userToEdit?.id || `su-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         nome: formData.nome.trim(),
-        email: formData.email.trim().toLowerCase(),
+        login: cleanLogin,
+        email: userToEdit?.email || `${cleanLogin}@hmwg.rn.gov.br`,
         senha: formData.senha || userToEdit?.senha || '',
         nivelAcesso: formData.nivelAcesso,
         setorPermitidoIds: formData.nivelAcesso === 'Administrador Total' ? [] : formData.setorPermitidoIds,
@@ -237,22 +240,25 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
               </div>
             </div>
 
-            {/* Email */}
+            {/* Login */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                E-mail (Login) *
+                Login de Acesso (Palavra ou Número) *
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                 <input
-                  type="email"
+                  type="text"
                   required
-                  placeholder="usuario@exemplo.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="ex: admin, enf01, 1024, juliana..."
+                  value={formData.login}
+                  onChange={(e) => setFormData((p) => ({ ...p, login: e.target.value }))}
                   className="w-full pl-9 pr-3 py-3 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Palavra ou número que o usuário usará para entrar no sistema
+              </p>
             </div>
 
             {/* Password */}
