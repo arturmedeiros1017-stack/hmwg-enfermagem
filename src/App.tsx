@@ -373,20 +373,6 @@ export default function App() {
         // Atualização e integração com usuários do sistema
         let currentEffectiveSysUsers = Storage.getSystemUsers();
         if (data.systemUsers && data.systemUsers.length > 0) {
-          const cloudUserIds = new Set(data.systemUsers.map((u) => u.id.toLowerCase().trim()));
-          const cloudUserEmails = new Set(
-            data.systemUsers.map((u) => (u.email ? u.email.toLowerCase().trim() : '')).filter(Boolean)
-          );
-
-          // Se os dados vieram da nuvem, desobstrui IDs locais que estão ativos na planilha
-          const currentDeleted = Storage.getDeletedSystemUserIds();
-          const cleanDeleted = currentDeleted.filter(
-            (id) => !cloudUserIds.has(id) && !cloudUserIds.has(`su-${id}`) && !cloudUserEmails.has(id)
-          );
-          if (cleanDeleted.length !== currentDeleted.length) {
-            localStorage.setItem('hmwg_nursing_deleted_system_user_ids_v1', JSON.stringify(cleanDeleted));
-          }
-
           const deletedIdsNow = new Set(
             Storage.getDeletedSystemUserIds().map((id) => id.toLowerCase().trim())
           );
@@ -830,6 +816,12 @@ export default function App() {
     lastLocalMutationTime.current = Date.now();
     hasMutation.current = true;
     isPushing.current = true;
+
+    // Desobstrui ID caso tenha sido deletado anteriormente
+    Storage.removeDeletedSystemUserId(savedEmp.id);
+    Storage.removeDeletedSystemUserId(savedEmp.id.replace(/^su-/, ''));
+    Storage.removeDeletedSystemUserId(`su-${savedEmp.id}`);
+    if (savedEmp.email) Storage.removeDeletedSystemUserId(savedEmp.email);
 
     // 2. Atualização SÍNCRONA E IMEDIATA no Storage e no React State
     const currentEmployees = Storage.getEmployees();
