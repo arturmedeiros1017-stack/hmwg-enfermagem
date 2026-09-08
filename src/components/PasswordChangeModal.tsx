@@ -35,7 +35,10 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({
       return;
     }
 
-    if (currentPassword !== employee.senha) {
+    const defaultSenha = employee.categoria === 'Enfermeiro(a)' ? 'enfermeira123' : 'hmwg123';
+    const effectiveSenha = employee.senha || defaultSenha;
+
+    if (currentPassword !== effectiveSenha && currentPassword !== employee.senha) {
       setError('Senha atual incorreta.');
       return;
     }
