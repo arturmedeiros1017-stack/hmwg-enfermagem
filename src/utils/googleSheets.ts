@@ -23,7 +23,7 @@ import {
   VacancyRequest,
 } from '../types';
 
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzEvq_bJHUw26JFwmca12aMXdvXvWR_tx4xps7RhLc7acZwJ4t8CajCTGfUNcIZi6jf/exec';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxz_pw7OWeyRXOQx1hDJ2guFCS9J0K24GprgStc8-cIrJjJqwDUCvEQ8MFkjdadq5iP/exec';
 const API_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || DEFAULT_API_URL;
 const USE_GOOGLE_SHEETS = Boolean(API_URL);
 
