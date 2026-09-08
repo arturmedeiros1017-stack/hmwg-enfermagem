@@ -109,8 +109,9 @@ function handleRequest(e, method) {
         result = save(sheetName, postData);
         break;
       case 'saveAll':
-        const allData = (method === 'POST' || method === 'PUT') ? JSON.parse(e.postData?.contents || '{}') : {};
-        result = saveAll(sheetName, allData.data);
+        const rawBody = (method === 'POST' || method === 'PUT') ? JSON.parse(e.postData?.contents || '{}') : {};
+        const recordsToSave = Array.isArray(rawBody) ? rawBody : (rawBody.data || []);
+        result = saveAll(sheetName, recordsToSave);
         break;
       case 'delete':
         result = deleteRecord(sheetName, e.parameter.id);
