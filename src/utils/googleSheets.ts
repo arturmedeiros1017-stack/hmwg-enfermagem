@@ -24,7 +24,10 @@ import {
 } from '../types';
 
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxz_pw7OWeyRXOQx1hDJ2guFCS9J0K24GprgStc8-cIrJjJqwDUCvEQ8MFkjdadq5iP/exec';
-const API_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || DEFAULT_API_URL;
+const rawEnvUrl = import.meta.env.VITE_GOOGLE_SHEETS_URL;
+const API_URL = (rawEnvUrl && rawEnvUrl.trim())
+  ? rawEnvUrl.trim().replace(/^["']|["']$/g, '')
+  : DEFAULT_API_URL;
 const USE_GOOGLE_SHEETS = Boolean(API_URL);
 
 // Helper para fazer requisições

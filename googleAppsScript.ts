@@ -105,11 +105,11 @@ function handleRequest(e, method) {
         result = getById(sheetName, e.parameter.id);
         break;
       case 'save':
-        const postData = (method === 'POST' || method === 'PUT') ? JSON.parse(e.postData?.contents || '{}') : {};
+        const postData = e.postData?.contents ? JSON.parse(e.postData.contents) : (e.parameter || {});
         result = save(sheetName, postData);
         break;
       case 'saveAll':
-        const rawBody = (method === 'POST' || method === 'PUT') ? JSON.parse(e.postData?.contents || '{}') : {};
+        const rawBody = e.postData?.contents ? JSON.parse(e.postData.contents) : {};
         const recordsToSave = Array.isArray(rawBody) ? rawBody : (rawBody.data || []);
         result = saveAll(sheetName, recordsToSave);
         break;
