@@ -347,23 +347,33 @@ export async function deleteVacancy(id: string): Promise<void> {
 export async function fetchSystemUsers(): Promise<SystemUser[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'usuarios_sistema');
-  return (result.data || []).map((u: any) => ({
-    id: String(u.id || `su-${Date.now()}`),
-    nome: String(u.nome || 'Usuário Sem Nome'),
-    login: String(u.login || u.email?.split('@')[0] || u.email || 'usuario'),
-    email: u.email ? String(u.email) : '',
-    senha: u.senha !== undefined && u.senha !== null ? String(u.senha) : '',
-    nivelAcesso: (u.nivelAcesso || 'Visualização Restrita') as any,
-    cargo: u.cargo ? String(u.cargo) : '',
-    ativo: u.ativo === true || u.ativo === 'true' || u.ativo === 'TRUE',
-    criadoEm: u.criadoEm ? String(u.criadoEm) : new Date().toISOString(),
-    ultimoAcesso: u.ultimoAcesso ? String(u.ultimoAcesso) : undefined,
-    setorPermitidoIds: Array.isArray(u.setorPermitidoIds)
-      ? u.setorPermitidoIds
-      : typeof u.setorPermitidoIds === 'string' && u.setorPermitidoIds.trim()
-        ? (() => { try { return JSON.parse(u.setorPermitidoIds); } catch { return u.setorPermitidoIds.split(',').map((s: string) => s.trim()).filter(Boolean); } })()
-        : [],
-  }));
+  return (result.data || []).map((u: any) => {
+    let access = String(u.nivelAcesso || 'Visualização Restrita').trim();
+    if (access.includes('Visualiza')) access = 'Visualização Restrita';
+    else if (access.includes('Tcnico') || access.includes('Técnico')) access = 'Técnico(a) de Enfermagem';
+    else if (access.includes('Mdico') || access.includes('Médico')) access = 'Médico(a)';
+    else if (access.includes('Enfermeiro')) access = 'Enfermeiro(a)';
+    else if (access.includes('Administrador Total')) access = 'Administrador Total';
+    else if (access.includes('Administrador Setor')) access = 'Administrador Setor';
+
+    return {
+      id: String(u.id || `su-${Date.now()}`),
+      nome: String(u.nome || 'Usuário Sem Nome'),
+      login: String(u.login || u.email?.split('@')[0] || u.email || 'usuario'),
+      email: u.email ? String(u.email) : '',
+      senha: u.senha !== undefined && u.senha !== null ? String(u.senha) : '',
+      nivelAcesso: access as any,
+      cargo: u.cargo ? String(u.cargo) : '',
+      ativo: u.ativo === true || u.ativo === 'true' || u.ativo === 'TRUE',
+      criadoEm: u.criadoEm ? String(u.criadoEm) : new Date().toISOString(),
+      ultimoAcesso: u.ultimoAcesso ? String(u.ultimoAcesso) : undefined,
+      setorPermitidoIds: Array.isArray(u.setorPermitidoIds)
+        ? u.setorPermitidoIds
+        : typeof u.setorPermitidoIds === 'string' && u.setorPermitidoIds.trim()
+          ? (() => { try { return JSON.parse(u.setorPermitidoIds); } catch { return u.setorPermitidoIds.split(',').map((s: string) => s.trim()).filter(Boolean); } })()
+          : [],
+    };
+  });
 }
 
 export async function saveSystemUser(user: SystemUser): Promise<void> {
