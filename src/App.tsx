@@ -1181,7 +1181,7 @@ export default function App() {
     Storage.addDeletedSystemUserId(userId.replace(/^su-/, ''));
     if (targetUser?.email) Storage.addDeletedSystemUserId(targetUser.email);
 
-    // Se o usuário excluído for também um funcionário no quadro, limpa a senha dele
+    // Se o usuário excluído for também um funcionário no quadro, remove o cadastro dele das listas
     const currentEmployees = Storage.getEmployees();
     const matchedEmp = currentEmployees.find(
       (e) =>
@@ -1196,9 +1196,7 @@ export default function App() {
       Storage.addDeletedSystemUserId(`su-${matchedEmp.id}`);
       if (matchedEmp.email) Storage.addDeletedSystemUserId(matchedEmp.email);
 
-      updatedEmps = currentEmployees.map((e) =>
-        e.id === matchedEmp.id ? { ...e, senha: '' } : e
-      );
+      updatedEmps = currentEmployees.filter((e) => e.id !== matchedEmp.id);
       Storage.saveEmployees(updatedEmps);
       setEmployees(updatedEmps);
     }
@@ -1217,9 +1215,7 @@ export default function App() {
       Storage.addDeletedSystemUserId(`su-${matchedNurse.id}`);
       if (matchedNurse.email) Storage.addDeletedSystemUserId(matchedNurse.email);
 
-      updatedNurses = currentNurses.map((n) =>
-        n.id === matchedNurse.id ? { ...n, senha: '' } : n
-      );
+      updatedNurses = currentNurses.filter((n) => n.id !== matchedNurse.id);
       Storage.saveNurses(updatedNurses);
       setNurses(updatedNurses);
     }
@@ -1238,13 +1234,13 @@ export default function App() {
         // 2. Sobrescreve a aba inteira de usuários do sistema com os restantes (garante remoção na planilha)
         await Storage.saveAllSystemUsersCloud(updated);
 
-        // 3. Atualiza as abas de funcionários e enfermeiros com a senha limpa na nuvem
+        // 3. Atualiza as abas de funcionários e enfermeiros na nuvem sem o usuário excluído
         if (matchedEmp) {
-          await Storage.saveEmployeeCloud({ ...matchedEmp, senha: '' });
+          await Storage.deleteEmployeeCloud(matchedEmp.id);
           await Storage.saveAllEmployeesCloud(updatedEmps);
         }
         if (matchedNurse) {
-          await Storage.saveNurseCloud({ ...matchedNurse, senha: '' });
+          await Storage.deleteNurseCloud(matchedNurse.id);
           await Storage.saveAllNursesCloud(updatedNurses);
         }
         setLastSyncTime(new Date());
