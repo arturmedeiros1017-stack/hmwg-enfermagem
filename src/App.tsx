@@ -287,6 +287,7 @@ export default function App() {
     isPushing.current = true;
     setIsSyncing(true);
     try {
+      const effectiveUsers = integrateEmployeesIntoSystemUsers(employees, systemUsers);
       await Storage.syncToGoogleSheets({
         sectors,
         beds,
@@ -296,7 +297,7 @@ export default function App() {
         employees,
         shifts,
         vacancies,
-        systemUsers,
+        systemUsers: effectiveUsers,
       });
       setLastSyncTime(new Date());
     } catch (err) {
