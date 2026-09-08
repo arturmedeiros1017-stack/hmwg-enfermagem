@@ -397,9 +397,8 @@ export default function App() {
             return !deletedIdsNow.has(uId) && (!uEmail || !deletedIdsNow.has(uEmail));
           });
 
-          if (Date.now() - lastLocalMutationTime.current >= 30000 || !isSilent) {
-            currentEffectiveSysUsers = validCloudUsers;
-          }
+          // A planilha Google é a fonte da verdade: aplica sempre os usuários válidos da nuvem
+          currentEffectiveSysUsers = validCloudUsers;
         }
 
         // Integração completa: todos os funcionários com senhas da planilha refletem em Acessos & Senhas
