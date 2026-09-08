@@ -348,9 +348,16 @@ export async function fetchSystemUsers(): Promise<SystemUser[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'usuarios_sistema');
   return (result.data || []).map((u: any) => ({
-    ...u,
+    id: String(u.id || `su-${Date.now()}`),
+    nome: String(u.nome || 'Usuário Sem Nome'),
+    login: String(u.login || u.email?.split('@')[0] || u.email || 'usuario'),
+    email: u.email ? String(u.email) : '',
     senha: u.senha !== undefined && u.senha !== null ? String(u.senha) : '',
-    ativo: u.ativo === true || u.ativo === 'true',
+    nivelAcesso: (u.nivelAcesso || 'Visualização Restrita') as any,
+    cargo: u.cargo ? String(u.cargo) : '',
+    ativo: u.ativo === true || u.ativo === 'true' || u.ativo === 'TRUE',
+    criadoEm: u.criadoEm ? String(u.criadoEm) : new Date().toISOString(),
+    ultimoAcesso: u.ultimoAcesso ? String(u.ultimoAcesso) : undefined,
     setorPermitidoIds: Array.isArray(u.setorPermitidoIds)
       ? u.setorPermitidoIds
       : typeof u.setorPermitidoIds === 'string' && u.setorPermitidoIds.trim()

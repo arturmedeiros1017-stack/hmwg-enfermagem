@@ -88,10 +88,11 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
       const term = searchTerm.toLowerCase().trim();
       const matchesSearch =
         !term ||
-        user.nome.toLowerCase().includes(term) ||
-        user.email.toLowerCase().includes(term) ||
-        (user.cargo && user.cargo.toLowerCase().includes(term)) ||
-        user.nivelAcesso.toLowerCase().includes(term);
+        (user.nome && String(user.nome).toLowerCase().includes(term)) ||
+        (user.login && String(user.login).toLowerCase().includes(term)) ||
+        (user.email && String(user.email).toLowerCase().includes(term)) ||
+        (user.cargo && String(user.cargo).toLowerCase().includes(term)) ||
+        (user.nivelAcesso && String(user.nivelAcesso).toLowerCase().includes(term));
 
       const matchesLevel =
         selectedLevelFilter === 'TODOS' || user.nivelAcesso === selectedLevelFilter;
