@@ -107,7 +107,7 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
       return;
     }
 
-    const cleanLogin = formData.login.trim().toLowerCase();
+    const cleanLogin = formData.login.trim();
     if (!cleanLogin) {
       setError('Informe o login de acesso (palavra ou número).');
       return;
@@ -135,7 +135,7 @@ export const SystemAccessModal: React.FC<SystemAccessModalProps> = ({
 
     const loginExists = existingUsers.some(
       (u) =>
-        ((u.login || u.email || '').toLowerCase() === cleanLogin) &&
+        ((u.login || u.email || '').toLowerCase() === cleanLogin.toLowerCase()) &&
         u.id !== (userToEdit?.id || '')
     );
     if (loginExists) {

@@ -34,7 +34,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     e.preventDefault();
     setError('');
 
-    const cleanLogin = emailOrLogin.trim().toLowerCase();
+    const cleanLogin = emailOrLogin.trim();
+    const cleanLoginLower = cleanLogin.toLowerCase();
     const cleanPassword = password.trim();
 
     if (!cleanLogin || !cleanPassword) {
@@ -42,27 +43,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
-    // 1. Verifica se a conta está bloqueada por excesso de tentativas
-    const lockStatus = Storage.isUserLocked(cleanLogin);
-    if (lockStatus.locked) {
-      setError(lockStatus.reason || 'Conta bloqueada por excesso de tentativas incorretas.');
-      return;
-    }
-
-    // 2. Busca lista atualizada de usuários do sistema
+    // 1. Busca lista atualizada de usuários do sistema
     const currentSystemUsers = systemUsers.length > 0 ? systemUsers : Storage.getSystemUsers();
 
-    // 3. Procura correspondência
+    // 2. Procura correspondência
     let matchedUser: AuthUser | null = null;
 
     // Caso A: Usuário do Sistema (palavra ou número cadastrado)
     const matchedSystemUser = currentSystemUsers.find((su) => {
-      const loginMatch = su.login?.toLowerCase() === cleanLogin;
-      const emailMatch = su.email?.toLowerCase() === cleanLogin;
+      const loginMatch = su.login?.toLowerCase().trim() === cleanLoginLower;
+      const emailMatch = su.email?.toLowerCase().trim() === cleanLoginLower;
+      const nameParts = su.nome
+        ? su.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim().split(' ')
+        : [];
+      const firstNameMatch = nameParts[0] === cleanLoginLower;
       const isAdminAlias =
-        (cleanLogin === 'admin' || cleanLogin === 'administrador') &&
+        (cleanLoginLower === 'admin' || cleanLoginLower === 'administrador') &&
         (su.login === 'admin' || su.email === 'admin' || su.email === 'admin@hmwg.rn.gov.br');
-      return (loginMatch || emailMatch || isAdminAlias) && su.senha === cleanPassword;
+      const passMatch = String(su.senha || '').trim() === cleanPassword;
+      return (loginMatch || emailMatch || firstNameMatch || isAdminAlias) && passMatch;
     });
 
     if (matchedSystemUser) {
@@ -82,7 +81,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
 
     // Caso B: Suporte direto ao usuário admin padrão caso não esteja na lista
-    if (!matchedUser && (cleanLogin === 'admin' || cleanLogin === 'administrador')) {
+    if (!matchedUser && (cleanLoginLower === 'admin' || cleanLoginLower === 'administrador')) {
       if (cleanPassword === 'admin' || cleanPassword === 'admin123') {
         matchedUser = {
           id: 'su-admin',
@@ -98,10 +97,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     // Caso C: Enfermeiros (login por COREN ou e-mail/nome)
     if (!matchedUser) {
       const matchedNurse = nurses.find((n) => {
-        const emailMatch = n.email.toLowerCase() === cleanLogin;
-        const corenMatch = n.coren.toLowerCase().replace(/[^a-z0-9]/g, '').includes(cleanLogin.replace(/[^a-z0-9]/g, ''));
-        const passMatch = n.senha === cleanPassword || (cleanPassword === 'admin' && n.cargo.includes('Chefe'));
-        return (emailMatch || corenMatch) && passMatch;
+        const emailMatch = n.email?.toLowerCase().trim() === cleanLoginLower;
+        const corenMatch = n.coren?.toLowerCase().replace(/[^a-z0-9]/g, '').includes(cleanLoginLower.replace(/[^a-z0-9]/g, ''));
+        const nameParts = n.nome
+          ? n.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim().split(' ')
+          : [];
+        const firstNameMatch = nameParts[0] === cleanLoginLower;
+        const passMatch =
+          String(n.senha || '').trim() === cleanPassword ||
+          (cleanPassword === 'admin' && (n.cargo?.includes('Chefe') || n.cargo?.includes('Coordenador')));
+        return (emailMatch || corenMatch || firstNameMatch) && passMatch;
       });
 
       if (matchedNurse) {
@@ -123,10 +128,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     // Caso D: Funcionários gerais cadastrados com senha
     if (!matchedUser && employees.length > 0) {
       const matchedEmp = employees.find((emp) => {
-        const emailMatch = emp.email.toLowerCase() === cleanLogin;
-        const matMatch = emp.matricula.toLowerCase().includes(cleanLogin);
-        const passMatch = emp.senha ? emp.senha === cleanPassword : cleanPassword === 'enfermagem123';
-        return (emailMatch || matMatch) && passMatch;
+        const emailMatch = emp.email?.toLowerCase().trim() === cleanLoginLower;
+        const matMatch = emp.matricula?.toLowerCase().trim().includes(cleanLoginLower);
+        const nameParts = emp.nome
+          ? emp.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim().split(' ')
+          : [];
+        const firstNameMatch = nameParts[0] === cleanLoginLower;
+        const fullNameMatch = emp.nome.toLowerCase().includes(cleanLoginLower);
+        const cpfMatch = emp.cpf ? emp.cpf.replace(/\D/g, '') === cleanLoginLower.replace(/\D/g, '') : false;
+        const passMatch = emp.senha
+          ? String(emp.senha).trim() === cleanPassword
+          : cleanPassword === 'enfermagem123';
+        return (emailMatch || matMatch || firstNameMatch || fullNameMatch || cpfMatch) && passMatch;
       });
 
       if (matchedEmp) {
@@ -147,9 +160,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       }
     }
 
-    // 4. Se encontrou o usuário e senha correta
+    // 3. Se encontrou o usuário e senha correta
     if (matchedUser) {
-      Storage.resetFailedAttempts(cleanLogin);
+      Storage.unlockUser(cleanLoginLower);
+      Storage.resetFailedAttempts(cleanLoginLower);
+      if (matchedUser.login) Storage.unlockUser(matchedUser.login.toLowerCase());
+      if (matchedUser.email) Storage.unlockUser(matchedUser.email.toLowerCase());
       Storage.addAccessLog({
         usuarioNome: matchedUser.nome,
         usuarioLogin: matchedUser.login,
@@ -162,17 +178,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
+    // 4. Se não bateu a senha: checa se já estava bloqueado por tentativas anteriores
+    const lockStatus = Storage.isUserLocked(cleanLoginLower);
+    if (lockStatus.locked) {
+      setError(lockStatus.reason || 'Conta bloqueada por excesso de tentativas incorretas.');
+      return;
+    }
+
     // 5. Credenciais incorretas: contabiliza tentativa e aplica limite
     const settings = Storage.getSecuritySettings();
     const attemptResult = Storage.recordFailedAttempt(
-      cleanLogin,
+      cleanLoginLower,
       settings.maxFailedAttempts,
       settings.lockoutDurationMinutes
     );
 
     Storage.addAccessLog({
       usuarioNome: cleanLogin,
-      usuarioLogin: cleanLogin,
+      usuarioLogin: cleanLoginLower,
       tipoEvento: attemptResult.locked ? 'CONTA_BLOQUEADA' : 'SENHA_INCORRETA',
       detalhes: attemptResult.locked
         ? `Bloqueio por exceder o limite de ${settings.maxFailedAttempts} tentativas de senha incorreta.`
@@ -253,6 +276,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <input
                   type="text"
                   required
+                  autoComplete="username"
+                  autoCapitalize="sentences"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="text"
+                  enterKeyHint="next"
                   placeholder="Digite seu login (ex: admin, 1024, juliana...)"
                   value={emailOrLogin}
                   onChange={(e) => setEmailOrLogin(e.target.value)}
@@ -270,6 +299,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="current-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="text"
+                  enterKeyHint="send"
                   placeholder="Digite sua senha"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

@@ -18,11 +18,12 @@ import {
   Patient,
   Sector,
   ShiftConfig,
+  SystemUser,
   Technician,
   VacancyRequest,
 } from '../types';
 
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxdu_kvKMQRNWc0nhNFW_P0-RvIjonCMCFJTAv9ihH-Z9DBgyYQqAkSVTjYQYIh6I1u/exec';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzEvq_bJHUw26JFwmca12aMXdvXvWR_tx4xps7RhLc7acZwJ4t8CajCTGfUNcIZi6jf/exec';
 const API_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || DEFAULT_API_URL;
 const USE_GOOGLE_SHEETS = Boolean(API_URL);
 
@@ -60,22 +61,44 @@ async function requestPost(action: string, sheet: string, data: any): Promise<an
   url.searchParams.set('action', action);
   url.searchParams.set('sheet', sheet);
 
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/plain',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Erro na requisição: ${response.status}`);
-  }
+  const body = JSON.stringify(data);
+  console.log(`[GS POST] ${action} → ${sheet} (${body.length} bytes)`);
 
   try {
-    return await response.json();
-  } catch {
-    return { success: true };
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=UTF-8',
+      },
+      body: body,
+      redirect: 'follow',
+    });
+
+    const text = await response.text();
+    console.log(`[GS POST] ${action} ← ${sheet} status=${response.status} body=${text.substring(0, 300)}`);
+    try {
+      return JSON.parse(text);
+    } catch {
+      console.warn('[GS POST] Resposta não-JSON do Google Sheets:', text.substring(0, 200));
+      return { success: true };
+    }
+  } catch (err) {
+    console.warn(`[GS POST] Fetch padrão falhou para ${sheet}, tentando fallback no-cors:`, err);
+    try {
+      await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=UTF-8',
+        },
+        body: body,
+        mode: 'no-cors',
+      });
+      console.log(`[GS POST] Fallback no-cors disparado com sucesso para ${sheet}`);
+      return { success: true };
+    } catch (fallbackErr) {
+      console.error(`[GS POST] Erro fatal ao postar em ${sheet}:`, fallbackErr);
+      throw fallbackErr;
+    }
   }
 }
 
@@ -168,7 +191,10 @@ export async function deletePatient(id: string): Promise<void> {
 export async function fetchNurses(): Promise<Nurse[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'enfermeiros');
-  return result.data || [];
+  return (result.data || []).map((n: any) => ({
+    ...n,
+    senha: n.senha !== undefined && n.senha !== null ? String(n.senha) : '',
+  }));
 }
 
 export async function saveNurse(nurse: Nurse): Promise<void> {
@@ -217,7 +243,10 @@ export async function deleteTechnician(id: string): Promise<void> {
 export async function fetchEmployees(): Promise<Employee[]> {
   if (!USE_GOOGLE_SHEETS) return [];
   const result = await request('getAll', 'funcionarios');
-  return result.data || [];
+  return (result.data || []).map((e: any) => ({
+    ...e,
+    senha: e.senha !== undefined && e.senha !== null ? String(e.senha) : '',
+  }));
 }
 
 export async function saveEmployee(employee: Employee): Promise<void> {
@@ -313,6 +342,38 @@ export async function deleteVacancy(id: string): Promise<void> {
   await request('delete', 'vagas', { id });
 }
 
+// ==================== SYSTEM USERS ====================
+
+export async function fetchSystemUsers(): Promise<SystemUser[]> {
+  if (!USE_GOOGLE_SHEETS) return [];
+  const result = await request('getAll', 'usuarios_sistema');
+  return (result.data || []).map((u: any) => ({
+    ...u,
+    senha: u.senha !== undefined && u.senha !== null ? String(u.senha) : '',
+    ativo: u.ativo === true || u.ativo === 'true',
+    setorPermitidoIds: Array.isArray(u.setorPermitidoIds)
+      ? u.setorPermitidoIds
+      : typeof u.setorPermitidoIds === 'string' && u.setorPermitidoIds.trim()
+        ? (() => { try { return JSON.parse(u.setorPermitidoIds); } catch { return u.setorPermitidoIds.split(',').map((s: string) => s.trim()).filter(Boolean); } })()
+        : [],
+  }));
+}
+
+export async function saveSystemUser(user: SystemUser): Promise<void> {
+  if (!USE_GOOGLE_SHEETS) return;
+  await requestPost('save', 'usuarios_sistema', user);
+}
+
+export async function saveAllSystemUsers(users: SystemUser[]): Promise<void> {
+  if (!USE_GOOGLE_SHEETS) return;
+  await requestPost('saveAll', 'usuarios_sistema', { data: users });
+}
+
+export async function deleteSystemUser(id: string): Promise<void> {
+  if (!USE_GOOGLE_SHEETS) return;
+  await request('delete', 'usuarios_sistema', { id });
+}
+
 // ==================== SYNC ====================
 
 // Sincronizar todos os dados do localStorage para Google Sheets
@@ -325,19 +386,33 @@ export async function syncToGoogleSheets(data: {
   employees: Employee[];
   shifts: ShiftConfig[];
   vacancies: VacancyRequest[];
+  systemUsers?: SystemUser[];
 }): Promise<void> {
   if (!USE_GOOGLE_SHEETS) return;
 
-  await Promise.all([
-    saveAllSectors(data.sectors),
-    saveAllBeds(data.beds),
-    saveAllPatients(data.patients),
-    saveAllNurses(data.nurses),
-    saveAllTechnicians(data.technicians),
-    saveAllEmployees(data.employees),
-    saveAllShifts(data.shifts),
-    saveAllVacancies(data.vacancies),
-  ]);
+  const tasks: (() => Promise<void>)[] = [
+    () => saveAllSectors(data.sectors),
+    () => saveAllBeds(data.beds),
+    () => saveAllPatients(data.patients),
+    () => saveAllNurses(data.nurses),
+    () => saveAllTechnicians(data.technicians),
+    () => saveAllEmployees(data.employees),
+    () => saveAllShifts(data.shifts),
+    () => saveAllVacancies(data.vacancies),
+  ];
+
+  if (data.systemUsers) {
+    tasks.push(() => saveAllSystemUsers(data.systemUsers!));
+  }
+
+  // Execução sequencial resiliente para evitar colisão de lock no Google Apps Script
+  for (const task of tasks) {
+    try {
+      await task();
+    } catch (itemErr) {
+      console.warn('Aviso ao sincronizar item para Google Sheets:', itemErr);
+    }
+  }
 }
 
 // Carregar todos os dados do Google Sheets
@@ -350,11 +425,12 @@ export async function loadFromGoogleSheets(): Promise<{
   employees: Employee[];
   shifts: ShiftConfig[];
   vacancies: VacancyRequest[];
+  systemUsers: SystemUser[];
 } | null> {
   if (!USE_GOOGLE_SHEETS) return null;
 
   try {
-    const [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies] =
+    const [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, systemUsers] =
       await Promise.all([
         fetchSectors(),
         fetchBeds(),
@@ -364,9 +440,10 @@ export async function loadFromGoogleSheets(): Promise<{
         fetchEmployees(),
         fetchShifts(),
         fetchVacancies(),
+        fetchSystemUsers(),
       ]);
 
-    return { sectors, beds, patients, nurses, technicians, employees, shifts, vacancies };
+    return { sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, systemUsers };
   } catch (error) {
     console.error('Erro ao carregar dados do Google Sheets:', error);
     return null;

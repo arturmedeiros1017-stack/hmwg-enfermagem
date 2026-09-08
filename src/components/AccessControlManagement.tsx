@@ -31,6 +31,8 @@ interface AccessControlManagementProps {
   onSaveSystemUser: (user: SystemUser) => void | Promise<void>;
   onDeleteSystemUser: (userId: string) => void;
   onRefresh?: () => void;
+  onSyncCloud?: () => Promise<void> | void;
+  isSyncing?: boolean;
 }
 
 export const AccessControlManagement: React.FC<AccessControlManagementProps> = ({
@@ -39,6 +41,8 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
   onSaveSystemUser,
   onDeleteSystemUser,
   onRefresh,
+  onSyncCloud,
+  isSyncing = false,
 }) => {
   // Navigation inside Access Management
   const [subTab, setSubTab] = useState<'usuarios' | 'politicas' | 'auditoria'>('usuarios');
@@ -247,6 +251,18 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
               <KeyRound className="w-3.5 h-3.5 text-amber-300" />
               <span>Senha do Admin</span>
             </button>
+
+            {onSyncCloud && (
+              <button
+                onClick={onSyncCloud}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white text-xs font-bold rounded-xl border border-white/20 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                title="Buscar atualizações mais recentes da planilha Google agora"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-cyan-300 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Sincronizando...' : 'Atualizar Planilha'}</span>
+              </button>
+            )}
 
             <button
               onClick={() => {

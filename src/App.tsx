@@ -41,6 +41,107 @@ import {
   Building2,
 } from 'lucide-react';
 
+// Função para integrar profissionais do quadro de funcionários aos usuários do sistema
+function integrateEmployeesIntoSystemUsers(
+  employees: Employee[],
+  currentSystemUsers: SystemUser[]
+): SystemUser[] {
+  const deletedIds = new Set(Storage.getDeletedSystemUserIds().map((id) => id.toLowerCase().trim()));
+  let updatedUsers = [...currentSystemUsers].filter((u) => {
+    const uId = u.id.toLowerCase();
+    const uWithoutSu = uId.replace(/^su-/, '');
+    const uEmail = u.email ? u.email.toLowerCase().trim() : '';
+    return (
+      !deletedIds.has(uId) &&
+      !deletedIds.has(uWithoutSu) &&
+      !deletedIds.has(`su-${uWithoutSu}`) &&
+      (!uEmail || !deletedIds.has(uEmail))
+    );
+  });
+
+  employees.forEach((emp) => {
+    const empIdKey = emp.id.toLowerCase();
+    const suKey = `su-${emp.id}`.toLowerCase();
+    const withoutSuKey = empIdKey.replace(/^su-/, '');
+    const empEmailKey = emp.email ? emp.email.toLowerCase().trim() : '';
+
+    // Se o usuário foi expressamente excluído pelo administrador, não recria
+    if (
+      deletedIds.has(empIdKey) ||
+      deletedIds.has(suKey) ||
+      deletedIds.has(withoutSuKey) ||
+      (empEmailKey && deletedIds.has(empEmailKey))
+    ) {
+      return;
+    }
+
+    const idx = updatedUsers.findIndex(
+      (u) =>
+        u.id.toLowerCase() === empIdKey ||
+        u.id.toLowerCase() === suKey ||
+        u.id.toLowerCase().replace(/^su-/, '') === withoutSuKey ||
+        (u.email && emp.email && u.email.toLowerCase().trim() === empEmailKey)
+    );
+
+    const cleanLogin =
+      emp.nome
+        .toLowerCase()
+        .replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '')
+        .trim()
+        .split(' ')[0]
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '') || `user_${emp.matricula.replace(/[^0-9]/g, '')}`;
+
+    let accessLevel: SystemUser['nivelAcesso'] = 'Visualização Restrita';
+    if (emp.categoria === 'Enfermeiro(a)') {
+      accessLevel =
+        emp.cargo?.toLowerCase().includes('chefe') ||
+        emp.cargo?.toLowerCase().includes('coordenador')
+          ? 'Administrador Total'
+          : 'Enfermeiro(a)';
+    } else if (emp.categoria === 'Técnico(a) de Enfermagem') {
+      accessLevel = 'Técnico(a) de Enfermagem';
+    } else if (emp.categoria === 'Médico(a)') {
+      accessLevel = 'Médico(a)';
+    }
+
+    const defaultSenha = emp.categoria === 'Enfermeiro(a)' ? 'enfermeira123' : 'hmwg123';
+    // Prioriza a senha já existente/editada em systemUsers para não ser sobrescrita pelo quadro de funcionários
+    const finalSenha =
+      idx >= 0 && updatedUsers[idx].senha
+        ? String(updatedUsers[idx].senha)
+        : emp.senha
+        ? String(emp.senha)
+        : defaultSenha;
+
+    const targetUser: SystemUser = {
+      id: idx >= 0 ? updatedUsers[idx].id : `su-${emp.id}`,
+      nome: emp.nome,
+      login: idx >= 0 && updatedUsers[idx].login ? updatedUsers[idx].login : cleanLogin,
+      email: emp.email,
+      senha: finalSenha,
+      cargo: emp.cargo,
+      nivelAcesso: idx >= 0 ? updatedUsers[idx].nivelAcesso : accessLevel,
+      setorPermitidoIds: emp.setorPadraoId ? [emp.setorPadraoId] : [],
+      ativo: emp.status === 'ATIVO',
+      criadoEm: idx >= 0 ? updatedUsers[idx].criadoEm : new Date().toISOString(),
+    };
+
+    if (idx >= 0) {
+      updatedUsers[idx] = {
+        ...updatedUsers[idx],
+        ...targetUser,
+        senha: finalSenha,
+      };
+    } else {
+      updatedUsers.push(targetUser);
+    }
+  });
+
+  return updatedUsers;
+}
+
 export default function App() {
   // Application Data States
   const [sectors, setSectors] = useState<Sector[]>(() => Storage.getSectors());
@@ -49,7 +150,11 @@ export default function App() {
   const [nurses, setNurses] = useState<Nurse[]>(() => Storage.getNurses());
   const [technicians, setTechnicians] = useState<Technician[]>(() => Storage.getTechnicians());
   const [employees, setEmployees] = useState<Employee[]>(() => Storage.getEmployees());
-  const [systemUsers, setSystemUsers] = useState<SystemUser[]>(() => Storage.getSystemUsers());
+  const [systemUsers, setSystemUsers] = useState<SystemUser[]>(() => {
+    const rawUsers = Storage.getSystemUsers();
+    const rawEmps = Storage.getEmployees();
+    return integrateEmployeesIntoSystemUsers(rawEmps, rawUsers);
+  });
   const [shifts, setShifts] = useState<ShiftConfig[]>(() => Storage.getShifts());
   const [vacancies, setVacancies] = useState<VacancyRequest[]>(() => Storage.getVacancies());
   const [currentUser, setCurrentUser] = useState<AuthUser | Nurse | null>(() => Storage.getCurrentUser());
@@ -148,6 +253,7 @@ export default function App() {
   useEffect(() => { Storage.saveNurses(nurses); }, [nurses]);
   useEffect(() => { Storage.saveTechnicians(technicians); }, [technicians]);
   useEffect(() => { Storage.saveEmployees(employees); }, [employees]);
+  useEffect(() => { Storage.saveSystemUsers(systemUsers); }, [systemUsers]);
   useEffect(() => { Storage.saveShifts(shifts); }, [shifts]);
   useEffect(() => { Storage.saveVacancies(vacancies); }, [vacancies]);
   useEffect(() => { Storage.saveCurrentUser(currentUser); }, [currentUser]);
@@ -173,59 +279,6 @@ export default function App() {
     }, 3500);
   }, []);
 
-  // Pull latest data from Google Sheets
-  const pullFromCloud = useCallback(async (isSilent = false) => {
-    if (!Storage.isUsingGoogleSheets() || isPushing.current) return;
-
-    // Se o usuário estiver com qualquer modal aberto, NÃO roda atualização em segundo plano para não atrapalhar
-    if (isSilent && typeof document !== 'undefined' && document.querySelector('.fixed.inset-0')) {
-      return;
-    }
-
-    // Se houve alteração local recente (últimos 60 segundos) e for um pull em segundo plano,
-    // não sobrescrever para evitar desfazer edições do usuário
-    if (Date.now() - lastLocalMutationTime.current < 60000 && isSilent) {
-      return;
-    }
-
-    if (!isSilent) setIsSyncing(true);
-
-    try {
-      const data = await Storage.syncFromGoogleSheets();
-      if (data) {
-        if (data.sectors && data.sectors.length > 0) setSectors(data.sectors);
-        if (data.beds) setBeds(data.beds);
-        if (data.patients) setPatients(data.patients);
-        if (data.nurses && data.nurses.length > 0) {
-          if (Date.now() - lastLocalMutationTime.current >= 60000 || !isSilent) {
-            setNurses(data.nurses);
-          }
-        }
-        if (data.technicians && data.technicians.length > 0) {
-          if (Date.now() - lastLocalMutationTime.current >= 60000 || !isSilent) {
-            setTechnicians(data.technicians);
-          }
-        }
-        if (data.employees && data.employees.length > 0) {
-          // Protege colaboradores recém-salvos contra sobrescrita pela nuvem
-          if (Date.now() - lastLocalMutationTime.current >= 60000 || !isSilent) {
-            setEmployees(data.employees);
-          }
-        }
-        if (data.shifts && data.shifts.length > 0) setShifts(data.shifts);
-        if (data.vacancies) setVacancies(data.vacancies);
-        setLastSyncTime(new Date());
-        if (!isSilent) showToast('Sistema atualizado com a nuvem!');
-      }
-    } catch (err) {
-      console.error('Erro ao sincronizar do Google Sheets:', err);
-      if (!isSilent) showToast('Falha na sincronização com a nuvem', 'error');
-    } finally {
-      isInitialSyncDone.current = true;
-      if (!isSilent) setIsSyncing(false);
-    }
-  }, [showToast]);
-
   // Push local data to Google Sheets
   const pushToCloud = useCallback(async () => {
     if (!Storage.isUsingGoogleSheets() || !isInitialSyncDone.current || isPushing.current) return;
@@ -241,6 +294,7 @@ export default function App() {
         employees,
         shifts,
         vacancies,
+        systemUsers,
       });
       setLastSyncTime(new Date());
     } catch (err) {
@@ -249,7 +303,125 @@ export default function App() {
       isPushing.current = false;
       setIsSyncing(false);
     }
-  }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies]);
+  }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, systemUsers]);
+
+  // Pull latest data from Google Sheets
+  const pullFromCloud = useCallback(async (isSilent = false) => {
+    if (!Storage.isUsingGoogleSheets() || isPushing.current) return;
+
+    // Não interrompe caso o usuário esteja com o foco em digitação ativa de algum formulário
+    if (isSilent && typeof document !== 'undefined') {
+      const isTyping = document.querySelector('form input:focus, form textarea:focus');
+      if (isTyping) {
+        return;
+      }
+    }
+
+    // Se o sistema estiver no meio de um envio (push), aguarda o próximo ciclo
+    if (isPushing.current) {
+      return;
+    }
+
+    if (!isSilent) setIsSyncing(true);
+
+    try {
+      const data = await Storage.syncFromGoogleSheets();
+      if (data) {
+        if (data.sectors && data.sectors.length > 0) setSectors(data.sectors);
+        if (data.beds) setBeds(data.beds);
+        if (data.patients) setPatients(data.patients);
+        if (data.nurses && data.nurses.length > 0) {
+          if (Date.now() - lastLocalMutationTime.current >= 30000 || !isSilent) {
+            setNurses(data.nurses);
+          }
+        }
+        if (data.technicians && data.technicians.length > 0) {
+          if (Date.now() - lastLocalMutationTime.current >= 30000 || !isSilent) {
+            setTechnicians(data.technicians);
+          }
+        }
+        const deletedIds = new Set(
+          Storage.getDeletedSystemUserIds().map((id) => id.toLowerCase().trim())
+        );
+
+        let currentEffectiveEmps = Storage.getEmployees();
+        if (data.employees && data.employees.length > 0) {
+          const validCloudEmps = data.employees.filter((e) => {
+            const eId = e.id.toLowerCase();
+            const eEmail = e.email ? e.email.toLowerCase().trim() : '';
+            return !deletedIds.has(eId) && !deletedIds.has(`su-${eId}`) && (!eEmail || !deletedIds.has(eEmail));
+          });
+
+          if (Date.now() - lastLocalMutationTime.current >= 30000 || !isSilent) {
+            const currentLocal = Storage.getEmployees();
+            const cloudIds = new Set(validCloudEmps.map((e) => e.id));
+            const unsavedLocal = currentLocal.filter((e) => !cloudIds.has(e.id) && !deletedIds.has(e.id.toLowerCase()));
+            const merged = [...validCloudEmps, ...unsavedLocal];
+            currentEffectiveEmps = merged;
+            setEmployees(merged);
+            Storage.saveEmployees(merged);
+            if (unsavedLocal.length > 0) {
+              hasMutation.current = true;
+            }
+          }
+        }
+        if (data.shifts && data.shifts.length > 0) setShifts(data.shifts);
+        if (data.vacancies) setVacancies(data.vacancies);
+
+        // Atualização e integração com usuários do sistema
+        let currentEffectiveSysUsers = Storage.getSystemUsers();
+        if (data.systemUsers && data.systemUsers.length > 0) {
+          const cloudUserIds = new Set(data.systemUsers.map((u) => u.id.toLowerCase().trim()));
+          const cloudUserEmails = new Set(
+            data.systemUsers.map((u) => (u.email ? u.email.toLowerCase().trim() : '')).filter(Boolean)
+          );
+
+          // Se os dados vieram da nuvem, desobstrui IDs locais que estão ativos na planilha
+          const currentDeleted = Storage.getDeletedSystemUserIds();
+          const cleanDeleted = currentDeleted.filter(
+            (id) => !cloudUserIds.has(id) && !cloudUserIds.has(`su-${id}`) && !cloudUserEmails.has(id)
+          );
+          if (cleanDeleted.length !== currentDeleted.length) {
+            localStorage.setItem('hmwg_nursing_deleted_system_user_ids_v1', JSON.stringify(cleanDeleted));
+          }
+
+          const deletedIdsNow = new Set(
+            Storage.getDeletedSystemUserIds().map((id) => id.toLowerCase().trim())
+          );
+
+          const validCloudUsers = data.systemUsers.filter((u) => {
+            const uId = u.id.toLowerCase();
+            const uEmail = u.email ? u.email.toLowerCase().trim() : '';
+            return !deletedIdsNow.has(uId) && (!uEmail || !deletedIdsNow.has(uEmail));
+          });
+
+          if (Date.now() - lastLocalMutationTime.current >= 30000 || !isSilent) {
+            currentEffectiveSysUsers = validCloudUsers;
+          }
+        }
+
+        // Integração completa: todos os funcionários com senhas da planilha refletem em Acessos & Senhas
+        const fullyIntegrated = integrateEmployeesIntoSystemUsers(currentEffectiveEmps, currentEffectiveSysUsers);
+        setSystemUsers(fullyIntegrated);
+        Storage.saveSystemUsers(fullyIntegrated);
+        setLastSyncTime(new Date());
+        if (!isSilent) showToast('Sistema atualizado com a nuvem!');
+      } else {
+        console.log('[PULL] Planilha vazia, fazendo push dos dados locais...');
+        isInitialSyncDone.current = true;
+        if (!isSilent) setIsSyncing(true);
+        await pushToCloud();
+        console.log('[PULL] Push inicial concluído.');
+        if (!isSilent) showToast('Dados locais enviados para a nuvem!');
+      }
+    } catch (err) {
+      console.error('Erro ao sincronizar do Google Sheets:', err);
+      if (!isSilent) showToast('Falha na sincronização com a nuvem', 'error');
+    } finally {
+      isInitialSyncDone.current = true;
+      if (!isSilent) setIsSyncing(false);
+    }
+  }, [showToast, pushToCloud]);
 
   // Push to cloud on user action (2s debounce after mutation)
   useEffect(() => {
@@ -257,7 +429,46 @@ export default function App() {
     hasMutation.current = false;
     const timer = setTimeout(() => { pushToCloud(); }, 2000);
     return () => clearTimeout(timer);
-  }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, pushToCloud]);
+  }, [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, systemUsers, pushToCloud]);
+
+  // Referência estável para pullFromCloud evitando re-iniciações de timers
+  const pullFromCloudRef = useRef(pullFromCloud);
+  useEffect(() => {
+    pullFromCloudRef.current = pullFromCloud;
+  }, [pullFromCloud]);
+
+  // Auto-refresh ininterrupto a cada 30 segundos em segundo plano + eventos de retorno à tela (celular/aba)
+  useEffect(() => {
+    if (!Storage.isUsingGoogleSheets()) return;
+
+    // Dispara sincronização inicial imediatamente ao abrir o sistema
+    pullFromCloudRef.current(true);
+
+    // Executa a cada 30 segundos com precisão em segundo plano
+    const interval = setInterval(() => {
+      console.log('[AUTO-SYNC 30s] Sincronizando dados com Google Sheets em segundo plano...');
+      pullFromCloudRef.current(true);
+    }, 30 * 1000);
+
+    // Quando o usuário volta ao navegador ou desbloqueia o celular, sincroniza imediatamente
+    const handleResume = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        console.log('[AUTO-SYNC] Tela ativa/visível. Atualizando da nuvem imediatamente...');
+        pullFromCloudRef.current(true);
+      }
+    };
+
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('online', handleResume);
+    document.addEventListener('visibilitychange', handleResume);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('online', handleResume);
+      document.removeEventListener('visibilitychange', handleResume);
+    };
+  }, []);
 
   // Sync only triggered explicitly by user actions (save, edit, delete)
 
@@ -614,8 +825,9 @@ export default function App() {
 
   // Handlers for Employees (Quadro Geral de Funcionários)
   const handleSaveEmployee = async (savedEmp: Employee) => {
-    // 1. Marca imediatamente imunidade contra pulls de background
+    // 1. Marca imediatamente imunidade contra pulls de background e gatilho de sincronização
     lastLocalMutationTime.current = Date.now();
+    hasMutation.current = true;
     isPushing.current = true;
 
     // 2. Atualização SÍNCRONA E IMEDIATA no Storage e no React State
@@ -630,6 +842,7 @@ export default function App() {
 
     let nurseDataToSync: Nurse | null = null;
     let techDataToSync: Technician | null = null;
+    let systemUserDataToSync: SystemUser | null = null;
 
     // Sincronização com Enfermeiros (Nurse)
     if (savedEmp.categoria === 'Enfermeiro(a)') {
@@ -678,6 +891,62 @@ export default function App() {
       setTechnicians(updatedTechs);
     }
 
+    // Sincronização automática com Usuários do Sistema (login e senha)
+    if (savedEmp.senha) {
+      const cleanLogin =
+        savedEmp.nome
+          .toLowerCase()
+          .replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '')
+          .trim()
+          .split(' ')[0]
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]/g, '') || `user_${savedEmp.matricula.replace(/[^0-9]/g, '')}`;
+
+      const currentSysUsers = Storage.getSystemUsers();
+      const existingUserIdx = currentSysUsers.findIndex(
+        (u) =>
+          u.id === savedEmp.id ||
+          u.id === `su-${savedEmp.id}` ||
+          (u.email && u.email.toLowerCase() === savedEmp.email.toLowerCase())
+      );
+
+      let accessLevel: SystemUser['nivelAcesso'] = 'Visualização Restrita';
+      if (savedEmp.categoria === 'Enfermeiro(a)') {
+        accessLevel =
+          savedEmp.cargo?.toLowerCase().includes('chefe') ||
+          savedEmp.cargo?.toLowerCase().includes('coordenador')
+            ? 'Administrador Total'
+            : 'Enfermeiro(a)';
+      } else if (savedEmp.categoria === 'Técnico(a) de Enfermagem') {
+        accessLevel = 'Técnico(a) de Enfermagem';
+      } else if (savedEmp.categoria === 'Médico(a)') {
+        accessLevel = 'Médico(a)';
+      }
+
+      systemUserDataToSync = {
+        id: existingUserIdx >= 0 ? currentSysUsers[existingUserIdx].id : `su-${savedEmp.id}`,
+        nome: savedEmp.nome,
+        login: existingUserIdx >= 0 && currentSysUsers[existingUserIdx].login
+          ? currentSysUsers[existingUserIdx].login
+          : cleanLogin,
+        email: savedEmp.email,
+        senha: savedEmp.senha,
+        cargo: savedEmp.cargo,
+        nivelAcesso: accessLevel,
+        setorPermitidoIds: savedEmp.setorPadraoId ? [savedEmp.setorPadraoId] : [],
+        ativo: savedEmp.status === 'ATIVO',
+        criadoEm: existingUserIdx >= 0 ? currentSysUsers[existingUserIdx].criadoEm : new Date().toISOString(),
+      };
+
+      const updatedSysUsers = existingUserIdx >= 0
+        ? currentSysUsers.map((u, i) => (i === existingUserIdx ? systemUserDataToSync! : u))
+        : [...currentSysUsers, systemUserDataToSync];
+
+      Storage.saveSystemUsers(updatedSysUsers);
+      setSystemUsers(updatedSysUsers);
+    }
+
     showToast(`Cadastro de ${savedEmp.nome} salvo com sucesso!`, 'success');
 
     // 3. Salvar diretamente no Google Sheets de forma atômica em segundo plano
@@ -686,6 +955,7 @@ export default function App() {
         await Storage.saveEmployeeCloud(savedEmp);
         if (nurseDataToSync) await Storage.saveNurseCloud(nurseDataToSync);
         if (techDataToSync) await Storage.saveTechnicianCloud(techDataToSync);
+        if (systemUserDataToSync) await Storage.saveSystemUserCloud(systemUserDataToSync);
         setLastSyncTime(new Date());
       }
     } catch (err) {
@@ -697,9 +967,11 @@ export default function App() {
 
   const handleDeleteEmployee = async (employeeId: string) => {
     lastLocalMutationTime.current = Date.now();
+    hasMutation.current = true;
     isPushing.current = true;
 
     const currentEmployees = Storage.getEmployees();
+    const targetEmp = currentEmployees.find((e) => e.id === employeeId);
     const updated = currentEmployees.filter((e) => e.id !== employeeId);
     Storage.saveEmployees(updated);
     setEmployees(updated);
@@ -714,11 +986,43 @@ export default function App() {
     Storage.saveTechnicians(updatedTechs);
     setTechnicians(updatedTechs);
 
+    const currentSysUsers = Storage.getSystemUsers();
+    const updatedSysUsers = currentSysUsers.filter(
+      (u) =>
+        u.id !== employeeId &&
+        u.id !== `su-${employeeId}` &&
+        (!targetEmp || u.email.toLowerCase() !== targetEmp.email.toLowerCase())
+    );
+    if (updatedSysUsers.length !== currentSysUsers.length) {
+      Storage.saveSystemUsers(updatedSysUsers);
+      setSystemUsers(updatedSysUsers);
+    }
+
     showToast('Funcionário removido com sucesso!', 'success');
+
+    // Registra como excluído para que o background sync nunca mais o ressuscite
+    Storage.addDeletedSystemUserId(employeeId);
+    Storage.addDeletedSystemUserId(`su-${employeeId}`);
+    if (targetEmp?.email) {
+      Storage.addDeletedSystemUserId(targetEmp.email);
+    }
 
     try {
       if (Storage.isUsingGoogleSheets()) {
-        await Storage.deleteEmployeeCloud(employeeId);
+        // Exclusões diretas nas 4 tabelas
+        await Promise.allSettled([
+          Storage.deleteEmployeeCloud(employeeId),
+          Storage.deleteNurseCloud(employeeId),
+          Storage.deleteTechnicianCloud(employeeId),
+          Storage.deleteSystemUserCloud(`su-${employeeId}`),
+          Storage.deleteSystemUserCloud(employeeId),
+        ]);
+
+        // E sobrescreve com as listas restantes para garantir que as linhas sumam da planilha
+        await Storage.saveAllEmployeesCloud(updated);
+        await Storage.saveAllNursesCloud(updatedNurses);
+        await Storage.saveAllTechniciansCloud(updatedTechs);
+        await Storage.saveAllSystemUsersCloud(updatedSysUsers);
       }
     } catch (err) {
       console.error('Erro ao excluir funcionário na nuvem:', err);
@@ -729,6 +1033,7 @@ export default function App() {
 
   const handleToggleEmployeeStatus = async (employeeId: string) => {
     lastLocalMutationTime.current = Date.now();
+    hasMutation.current = true;
     let updatedEmp: Employee | null = null;
 
     const currentEmployees = Storage.getEmployees();
@@ -751,10 +1056,23 @@ export default function App() {
     Storage.saveTechnicians(updatedTechs);
     setTechnicians(updatedTechs);
 
+    // Atualiza status ativo no usuário do sistema se existir
+    const currentSysUsers = Storage.getSystemUsers();
+    const updatedSysUsers = currentSysUsers.map((u) => {
+      if (u.id === employeeId || u.id === `su-${employeeId}` || (updatedEmp && u.email === updatedEmp.email)) {
+        return { ...u, ativo: updatedEmp?.status === 'ATIVO' };
+      }
+      return u;
+    });
+    Storage.saveSystemUsers(updatedSysUsers);
+    setSystemUsers(updatedSysUsers);
+
     if (updatedEmp) {
       try {
         if (Storage.isUsingGoogleSheets()) {
           await Storage.saveEmployeeCloud(updatedEmp);
+          const matchedUser = updatedSysUsers.find((u) => u.id === employeeId || u.id === `su-${employeeId}`);
+          if (matchedUser) await Storage.saveSystemUserCloud(matchedUser);
         }
       } catch (err) {
         console.error('Erro ao atualizar status do funcionário na nuvem:', err);
@@ -765,7 +1083,15 @@ export default function App() {
   // Handlers for System Users (Acessos ao Sistema)
   const handleSaveSystemUser = async (savedUser: SystemUser) => {
     lastLocalMutationTime.current = Date.now();
+    hasMutation.current = true;
     isPushing.current = true;
+
+    // Remove do conjunto de excluídos se estiver sendo recadastrado/salvo
+    Storage.removeDeletedSystemUserId(savedUser.id);
+    Storage.removeDeletedSystemUserId(savedUser.id.replace(/^su-/, ''));
+    if (savedUser.email) Storage.removeDeletedSystemUserId(savedUser.email);
+
+    console.log('[SYSUSER] Salvando:', savedUser.login, savedUser.id);
 
     const currentUsers = Storage.getSystemUsers();
     const idx = currentUsers.findIndex((u) => u.id === savedUser.id);
@@ -776,15 +1102,63 @@ export default function App() {
     Storage.saveSystemUsers(updatedUsers);
     setSystemUsers(updatedUsers);
 
+    // Sincroniza a senha também com o quadro de funcionários e enfermeiros se existir correspondente
+    const currentEmployees = Storage.getEmployees();
+    const matchedEmp = currentEmployees.find(
+      (e) =>
+        e.id === savedUser.id ||
+        `su-${e.id}` === savedUser.id ||
+        e.id === savedUser.id.replace(/^su-/, '') ||
+        (savedUser.email && e.email?.toLowerCase().trim() === savedUser.email.toLowerCase().trim())
+    );
+    let updatedEmps: Employee[] = currentEmployees;
+    if (matchedEmp) {
+      updatedEmps = currentEmployees.map((e) =>
+        e.id === matchedEmp.id ? { ...e, senha: savedUser.senha } : e
+      );
+      Storage.saveEmployees(updatedEmps);
+      setEmployees(updatedEmps);
+    }
+
+    const currentNurses = Storage.getNurses();
+    const matchedNurse = currentNurses.find(
+      (n) =>
+        n.id === savedUser.id ||
+        `su-${n.id}` === savedUser.id ||
+        n.id === savedUser.id.replace(/^su-/, '') ||
+        (savedUser.email && n.email?.toLowerCase().trim() === savedUser.email.toLowerCase().trim())
+    );
+    let updatedNurses: Nurse[] = currentNurses;
+    if (matchedNurse) {
+      updatedNurses = currentNurses.map((n) =>
+        n.id === matchedNurse.id ? { ...n, senha: savedUser.senha } : n
+      );
+      Storage.saveNurses(updatedNurses);
+      setNurses(updatedNurses);
+    }
+
     showToast(`Acesso de ${savedUser.nome} salvo com sucesso!`, 'success');
 
     try {
       if (Storage.isUsingGoogleSheets()) {
+        console.log('[SYSUSER] Enviando para Google Sheets...');
         await Storage.saveSystemUserCloud(savedUser);
+        await Storage.saveAllSystemUsersCloud(updatedUsers);
+
+        if (matchedEmp) {
+          await Storage.saveEmployeeCloud({ ...matchedEmp, senha: savedUser.senha });
+          await Storage.saveAllEmployeesCloud(updatedEmps);
+        }
+        if (matchedNurse) {
+          await Storage.saveNurseCloud({ ...matchedNurse, senha: savedUser.senha });
+          await Storage.saveAllNursesCloud(updatedNurses);
+        }
+
+        console.log('[SYSUSER] Salvo com sucesso na nuvem!');
         setLastSyncTime(new Date());
       }
     } catch (err) {
-      console.warn('Sincronização em nuvem do usuário do sistema continuará em background:', err);
+      console.error('[SYSUSER] Erro ao salvar na nuvem:', err);
     } finally {
       isPushing.current = false;
     }
@@ -792,18 +1166,87 @@ export default function App() {
 
   const handleDeleteSystemUser = async (userId: string) => {
     lastLocalMutationTime.current = Date.now();
+    hasMutation.current = true;
     isPushing.current = true;
 
     const currentUsers = Storage.getSystemUsers();
+    const targetUser = currentUsers.find((u) => u.id === userId);
     const updated = currentUsers.filter((u) => u.id !== userId);
     Storage.saveSystemUsers(updated);
     setSystemUsers(updated);
+
+    // Marca como excluído com todas as variações de chaves
+    Storage.addDeletedSystemUserId(userId);
+    Storage.addDeletedSystemUserId(userId.replace(/^su-/, ''));
+    if (targetUser?.email) Storage.addDeletedSystemUserId(targetUser.email);
+
+    // Se o usuário excluído for também um funcionário no quadro, limpa a senha dele
+    const currentEmployees = Storage.getEmployees();
+    const matchedEmp = currentEmployees.find(
+      (e) =>
+        e.id === userId ||
+        `su-${e.id}` === userId ||
+        e.id === userId.replace(/^su-/, '') ||
+        (targetUser?.email && e.email?.toLowerCase().trim() === targetUser.email.toLowerCase().trim())
+    );
+    let updatedEmps: Employee[] = currentEmployees;
+    if (matchedEmp) {
+      Storage.addDeletedSystemUserId(matchedEmp.id);
+      Storage.addDeletedSystemUserId(`su-${matchedEmp.id}`);
+      if (matchedEmp.email) Storage.addDeletedSystemUserId(matchedEmp.email);
+
+      updatedEmps = currentEmployees.map((e) =>
+        e.id === matchedEmp.id ? { ...e, senha: '' } : e
+      );
+      Storage.saveEmployees(updatedEmps);
+      setEmployees(updatedEmps);
+    }
+
+    const currentNurses = Storage.getNurses();
+    const matchedNurse = currentNurses.find(
+      (n) =>
+        n.id === userId ||
+        `su-${n.id}` === userId ||
+        n.id === userId.replace(/^su-/, '') ||
+        (targetUser?.email && n.email?.toLowerCase().trim() === targetUser.email.toLowerCase().trim())
+    );
+    let updatedNurses: Nurse[] = currentNurses;
+    if (matchedNurse) {
+      Storage.addDeletedSystemUserId(matchedNurse.id);
+      Storage.addDeletedSystemUserId(`su-${matchedNurse.id}`);
+      if (matchedNurse.email) Storage.addDeletedSystemUserId(matchedNurse.email);
+
+      updatedNurses = currentNurses.map((n) =>
+        n.id === matchedNurse.id ? { ...n, senha: '' } : n
+      );
+      Storage.saveNurses(updatedNurses);
+      setNurses(updatedNurses);
+    }
 
     showToast('Acesso removido com sucesso!', 'success');
 
     try {
       if (Storage.isUsingGoogleSheets()) {
-        await Storage.deleteSystemUserCloud(userId);
+        // 1. Exclui as linhas correspondentes no Google Sheets
+        await Promise.allSettled([
+          Storage.deleteSystemUserCloud(userId),
+          Storage.deleteSystemUserCloud(userId.replace(/^su-/, '')),
+          Storage.deleteSystemUserCloud(`su-${userId}`),
+        ]);
+
+        // 2. Sobrescreve a aba inteira de usuários do sistema com os restantes (garante remoção na planilha)
+        await Storage.saveAllSystemUsersCloud(updated);
+
+        // 3. Atualiza as abas de funcionários e enfermeiros com a senha limpa na nuvem
+        if (matchedEmp) {
+          await Storage.saveEmployeeCloud({ ...matchedEmp, senha: '' });
+          await Storage.saveAllEmployeesCloud(updatedEmps);
+        }
+        if (matchedNurse) {
+          await Storage.saveNurseCloud({ ...matchedNurse, senha: '' });
+          await Storage.saveAllNursesCloud(updatedNurses);
+        }
+        setLastSyncTime(new Date());
       }
     } catch (err) {
       console.error('Erro ao excluir usuário do sistema na nuvem:', err);
@@ -834,7 +1277,10 @@ export default function App() {
         }}
         isSyncing={isSyncing}
         lastSyncTime={lastSyncTime}
-        onManualSync={() => pullFromCloud(false)}
+        onManualSync={() => {
+          Storage.clearDeletedSystemUserIds();
+          pullFromCloud(false);
+        }}
       />
 
       {/* Main Content Area */}
@@ -937,6 +1383,11 @@ export default function App() {
             onSaveSystemUser={handleSaveSystemUser}
             onDeleteSystemUser={handleDeleteSystemUser}
             onRefresh={() => setSystemUsers(Storage.getSystemUsers())}
+            onSyncCloud={() => {
+              Storage.clearDeletedSystemUserIds();
+              pullFromCloud(false);
+            }}
+            isSyncing={isSyncing}
           />
         )}
       </main>

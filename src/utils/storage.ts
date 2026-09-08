@@ -35,6 +35,7 @@ import {
   fetchEmployees,
   fetchShifts,
   fetchVacancies,
+  fetchSystemUsers,
   saveSector,
   saveAllSectors,
   saveBed,
@@ -51,10 +52,15 @@ import {
   saveAllShifts,
   saveVacancy,
   saveAllVacancies,
+  saveSystemUser as gsSaveSystemUser,
+  saveAllSystemUsers as gsSaveAllSystemUsers,
   deleteSector as gsDeleteSector,
   deleteBed as gsDeleteBed,
   deletePatient as gsDeletePatient,
+  deleteNurse as gsDeleteNurse,
+  deleteTechnician as gsDeleteTechnician,
   deleteEmployee as gsDeleteEmployee,
+  deleteSystemUser as gsDeleteSystemUser,
 } from './googleSheets';
 
 const STORAGE_KEYS = {
@@ -74,6 +80,7 @@ const STORAGE_KEYS = {
   ACCESS_LOGS: 'hmwg_nursing_access_logs_v1',
   LOCK_STATUSES: 'hmwg_nursing_lock_statuses_v1',
   LAST_ACTIVITY: 'hmwg_nursing_last_activity_v1',
+  DELETED_SYSTEM_USER_IDS: 'hmwg_nursing_deleted_system_user_ids_v1',
 };
 
 function getItem<T>(key: string, defaultValue: T): T {
@@ -119,6 +126,7 @@ export interface CloudData {
   employees: Employee[];
   shifts: ShiftConfig[];
   vacancies: VacancyRequest[];
+  systemUsers: SystemUser[];
 }
 
 // Carregar dados do Google Sheets e salvar localmente
@@ -126,7 +134,7 @@ async function syncFromGoogleSheets(): Promise<CloudData | null> {
   if (!USE_GOOGLE_SHEETS) return null;
 
   try {
-    const [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies] =
+    const [sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, systemUsers] =
       await Promise.all([
         fetchSectors(),
         fetchBeds(),
@@ -136,6 +144,7 @@ async function syncFromGoogleSheets(): Promise<CloudData | null> {
         fetchEmployees(),
         fetchShifts(),
         fetchVacancies(),
+        fetchSystemUsers(),
       ]);
 
     if (sectors && sectors.length > 0) {
@@ -147,8 +156,11 @@ async function syncFromGoogleSheets(): Promise<CloudData | null> {
       saveLocally(STORAGE_KEYS.EMPLOYEES, employees);
       saveLocally(STORAGE_KEYS.SHIFTS, shifts);
       saveLocally(STORAGE_KEYS.VACANCIES, vacancies);
+      if (systemUsers && systemUsers.length > 0) {
+        saveLocally(STORAGE_KEYS.SYSTEM_USERS, systemUsers);
+      }
       saveLocally(STORAGE_KEYS.SYNC_STATUS, { lastSync: new Date().toISOString() });
-      return { sectors, beds, patients, nurses, technicians, employees, shifts, vacancies };
+      return { sectors, beds, patients, nurses, technicians, employees, shifts, vacancies, systemUsers };
     }
     return null;
   } catch (error) {
@@ -167,6 +179,7 @@ async function syncToGoogleSheets(data: {
   employees?: Employee[];
   shifts?: ShiftConfig[];
   vacancies?: VacancyRequest[];
+  systemUsers?: SystemUser[];
 }): Promise<void> {
   if (!USE_GOOGLE_SHEETS) return;
 
@@ -180,6 +193,7 @@ async function syncToGoogleSheets(data: {
     if (data.employees && data.employees.length > 0) tasks.push(() => saveAllEmployees(data.employees!));
     if (data.shifts && data.shifts.length > 0) tasks.push(() => saveAllShifts(data.shifts!));
     if (data.vacancies) tasks.push(() => saveAllVacancies(data.vacancies!));
+    if (data.systemUsers && data.systemUsers.length > 0) tasks.push(() => gsSaveAllSystemUsers(data.systemUsers!));
 
     // Execução sequencial resiliente para evitar colisão de lock no Google Apps Script
     for (const task of tasks) {
@@ -207,9 +221,12 @@ export const Storage = {
   // Sincronizar para Google Sheets
   syncToGoogleSheets,
 
-  // Operações diretas de nuvem para funcionários (rápido e atômico)
+  // Operações diretas de nuvem para funcionários e acessos (rápido e atômico)
   saveEmployeeCloud: async (emp: Employee) => {
     if (USE_GOOGLE_SHEETS) await saveEmployee(emp);
+  },
+  saveAllEmployeesCloud: async (employees: Employee[]) => {
+    if (USE_GOOGLE_SHEETS) await saveAllEmployees(employees);
   },
   deleteEmployeeCloud: async (id: string) => {
     if (USE_GOOGLE_SHEETS) await gsDeleteEmployee(id);
@@ -217,18 +234,66 @@ export const Storage = {
   saveNurseCloud: async (nurse: Nurse) => {
     if (USE_GOOGLE_SHEETS) await saveNurse(nurse);
   },
+  saveAllNursesCloud: async (nurses: Nurse[]) => {
+    if (USE_GOOGLE_SHEETS) await saveAllNurses(nurses);
+  },
+  deleteNurseCloud: async (id: string) => {
+    if (USE_GOOGLE_SHEETS) await gsDeleteNurse(id);
+  },
   saveTechnicianCloud: async (tech: Technician) => {
     if (USE_GOOGLE_SHEETS) await saveTechnician(tech);
   },
+  saveAllTechniciansCloud: async (techs: Technician[]) => {
+    if (USE_GOOGLE_SHEETS) await saveAllTechnicians(techs);
+  },
+  deleteTechnicianCloud: async (id: string) => {
+    if (USE_GOOGLE_SHEETS) await gsDeleteTechnician(id);
+  },
   saveSystemUserCloud: async (user: SystemUser) => {
-    // System users are stored locally only (no Google Sheets integration for now)
-    saveLocally(STORAGE_KEYS.SYSTEM_USERS, getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, []).map(u => u.id === user.id ? user : u).length > 0
-      ? getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, []).map(u => u.id === user.id ? user : u)
-      : [user, ...getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, [])]);
+    if (USE_GOOGLE_SHEETS) {
+      await gsSaveSystemUser(user);
+    }
+  },
+  saveAllSystemUsersCloud: async (users: SystemUser[]) => {
+    if (USE_GOOGLE_SHEETS) {
+      await gsSaveAllSystemUsers(users);
+    }
   },
   deleteSystemUserCloud: async (id: string) => {
-    // System users are stored locally only
-    saveLocally(STORAGE_KEYS.SYSTEM_USERS, getItem<SystemUser[]>(STORAGE_KEYS.SYSTEM_USERS, []).filter(u => u.id !== id));
+    if (USE_GOOGLE_SHEETS) {
+      await gsDeleteSystemUser(id);
+    }
+  },
+
+  // Gerenciamento de acessos expressamente excluídos para evitar que background sync os ressuscite
+  getDeletedSystemUserIds: (): string[] =>
+    getItem<string[]>(STORAGE_KEYS.DELETED_SYSTEM_USER_IDS, []),
+  addDeletedSystemUserId: (idOrKey: string) => {
+    if (!idOrKey) return;
+    const raw = String(idOrKey).toLowerCase().trim();
+    const withSu = raw.startsWith('su-') ? raw : `su-${raw}`;
+    const withoutSu = raw.replace(/^su-/, '');
+
+    const current = Storage.getDeletedSystemUserIds();
+    const toAdd = [raw, withSu, withoutSu].filter((k) => k && !current.includes(k));
+    if (toAdd.length > 0) {
+      saveLocally(STORAGE_KEYS.DELETED_SYSTEM_USER_IDS, [...current, ...toAdd]);
+    }
+  },
+  removeDeletedSystemUserId: (idOrKey: string) => {
+    if (!idOrKey) return;
+    const raw = String(idOrKey).toLowerCase().trim();
+    const withSu = raw.startsWith('su-') ? raw : `su-${raw}`;
+    const withoutSu = raw.replace(/^su-/, '');
+
+    const current = Storage.getDeletedSystemUserIds();
+    saveLocally(
+      STORAGE_KEYS.DELETED_SYSTEM_USER_IDS,
+      current.filter((x) => x !== raw && x !== withSu && x !== withoutSu)
+    );
+  },
+  clearDeletedSystemUserIds: () => {
+    saveLocally(STORAGE_KEYS.DELETED_SYSTEM_USER_IDS, []);
   },
 
   // Verificar status da sincronização

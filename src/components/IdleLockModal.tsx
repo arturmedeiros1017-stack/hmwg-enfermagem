@@ -71,7 +71,7 @@ export const IdleLockModal: React.FC<IdleLockModalProps> = ({
 
     // Valida senha (também aceita 'admin' se for conta de administrador)
     const isPasswordCorrect =
-      cleanPassword === expectedPassword ||
+      String(expectedPassword || '').trim() === cleanPassword ||
       (userEmail.includes('admin') && (cleanPassword === 'admin' || cleanPassword === 'admin123'));
 
     if (isPasswordCorrect) {
@@ -177,6 +177,12 @@ export const IdleLockModal: React.FC<IdleLockModalProps> = ({
                   type={showPassword ? 'text' : 'password'}
                   autoFocus
                   required
+                  autoComplete="current-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="text"
+                  enterKeyHint="send"
                   placeholder="Sua senha para desbloquear"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

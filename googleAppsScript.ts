@@ -32,6 +32,8 @@ const SHEETS = {
   funcionarios: 'funcionarios',
   plantoes: 'plantoes',
   vagas: 'vagas',
+  usuarios_sistema: 'usuarios_sistema',
+  usuarios_acesso: 'usuarios_sistema',
 };
 
 // Headers esperados para cada aba
@@ -57,6 +59,10 @@ const HEADERS = {
     'leitoDesejadoId', 'prioridade', 'diagnostico', 'justificativaClinica',
     'dataSolicitacao', 'status', 'solicitanteNome',
   ],
+  usuarios_sistema: [
+    'id', 'nome', 'login', 'email', 'senha', 'nivelAcesso', 'cargo',
+    'setorPermitidoIds', 'ativo', 'criadoEm', 'ultimoAcesso', 'bloqueadoAte',
+  ],
 };
 
 function doGet(e) {
@@ -76,7 +82,8 @@ function doDelete(e) {
 }
 
 function handleRequest(e, method) {
-  const action = e.parameter?.action || e.parameter?.action;
+  if (!e) e = {parameter:{}};
+  const action = e.parameter?.action;
   const sheetName = e.parameter?.sheet;
 
   // CORS headers
@@ -98,11 +105,11 @@ function handleRequest(e, method) {
         result = getById(sheetName, e.parameter.id);
         break;
       case 'save':
-        const postData = method === 'POST' ? JSON.parse(e.postData?.contents || '{}') : {};
+        const postData = (method === 'POST' || method === 'PUT') ? JSON.parse(e.postData?.contents || '{}') : {};
         result = save(sheetName, postData);
         break;
       case 'saveAll':
-        const allData = method === 'POST' ? JSON.parse(e.postData?.contents || '{}') : {};
+        const allData = (method === 'POST' || method === 'PUT') ? JSON.parse(e.postData?.contents || '{}') : {};
         result = saveAll(sheetName, allData.data);
         break;
       case 'delete':
@@ -179,7 +186,7 @@ function getById(sheetName, id) {
   const result = getAll(sheetName);
   if (result.error) return result;
 
-  const record = result.data.find((r) => r.id === id);
+  const record = result.data.find((r) => String(r.id).trim() === String(id).trim());
   return record ? { data: record } : { error: 'Registro não encontrado' };
 }
 
@@ -204,7 +211,9 @@ function save(sheetName, record) {
 
   // Encontrar índice do registro existente
   const idIndex = existingHeaders.indexOf('id');
-  const rowIndex = existingRows.findIndex((row) => row[idIndex] === record.id);
+  const rowIndex = idIndex >= 0
+    ? existingRows.findIndex((row) => String(row[idIndex]).trim() === String(record.id).trim())
+    : -1;
 
   // Preparar nova linha
   const newRow = headers.map((header) => {
@@ -276,7 +285,7 @@ function deleteRecord(sheetName, id) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const idIndex = headers.indexOf('id');
-  const rowIndex = data.findIndex((row, i) => i > 0 && row[idIndex] === id);
+  const rowIndex = data.findIndex((row, i) => i > 0 && idIndex >= 0 && String(row[idIndex]).trim() === String(id).trim());
 
   if (rowIndex > 0) {
     sheet.deleteRow(rowIndex + 1);

@@ -128,11 +128,20 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={onManualSync}
                 disabled={isSyncing}
                 className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors border border-white/20 cursor-pointer disabled:opacity-60"
-                title={lastSyncTime ? `Última sincronização: ${lastSyncTime.toLocaleTimeString('pt-BR')}` : 'Sincronizar dados com a nuvem'}
+                title={lastSyncTime ? `Última sincronização: ${lastSyncTime.toLocaleTimeString('pt-BR')} (Auto a cada 30s)` : 'Sincronização automática a cada 30s ativa'}
               >
-                <RefreshCw className={`w-3.5 h-3.5 text-cyan-300 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline text-[11px] font-semibold">
-                  {isSyncing ? 'Sincronizando...' : 'Nuvem'}
+                <div className="relative flex items-center justify-center">
+                  <RefreshCw className={`w-3.5 h-3.5 text-cyan-300 ${isSyncing ? 'animate-spin text-cyan-200' : ''}`} />
+                  {!isSyncing && (
+                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] font-semibold flex items-center gap-1">
+                  <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Auto 30s'}</span>
+                  <span className="sm:hidden">{isSyncing ? '...' : '30s'}</span>
                 </span>
               </button>
             )}
