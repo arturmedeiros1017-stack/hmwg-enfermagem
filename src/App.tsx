@@ -117,13 +117,15 @@ function integrateEmployeesIntoSystemUsers(
 
     const targetUser: SystemUser = {
       id: idx >= 0 ? updatedUsers[idx].id : `su-${emp.id}`,
-      nome: emp.nome,
+      nome: idx >= 0 && updatedUsers[idx].nome ? updatedUsers[idx].nome : emp.nome,
       login: idx >= 0 && updatedUsers[idx].login ? updatedUsers[idx].login : cleanLogin,
-      email: emp.email,
+      email: (idx >= 0 && updatedUsers[idx].email) ? updatedUsers[idx].email : emp.email,
       senha: finalSenha,
-      cargo: emp.cargo,
+      cargo: idx >= 0 && updatedUsers[idx].cargo ? updatedUsers[idx].cargo : emp.cargo,
       nivelAcesso: idx >= 0 ? updatedUsers[idx].nivelAcesso : accessLevel,
-      setorPermitidoIds: emp.setorPadraoId ? [emp.setorPadraoId] : [],
+      setorPermitidoIds: idx >= 0 && updatedUsers[idx].setorPermitidoIds && updatedUsers[idx].setorPermitidoIds.length > 0
+        ? updatedUsers[idx].setorPermitidoIds
+        : emp.setorPadraoId ? [emp.setorPadraoId] : [],
       ativo: emp.status === 'ATIVO',
       criadoEm: idx >= 0 ? updatedUsers[idx].criadoEm : new Date().toISOString(),
     };
