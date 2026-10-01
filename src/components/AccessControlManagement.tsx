@@ -106,7 +106,7 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
     const total = systemUsers.length;
     const active = systemUsers.filter((u) => u.ativo).length;
     const adminCount = systemUsers.filter((u) => u.nivelAcesso === 'Administrador Total').length;
-    const lockedCount = Object.values(lockStatuses).filter((l) => l.isLocked).length;
+    const lockedCount = (Object.values(lockStatuses) as UserLockStatus[]).filter((l) => l.isLocked).length;
 
     return { total, active, adminCount, lockedCount };
   }, [systemUsers, lockStatuses]);
@@ -675,7 +675,7 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
               </button>
             </div>
 
-            {Object.values(lockStatuses).filter((l) => l.isLocked).length === 0 ? (
+            {(Object.values(lockStatuses) as UserLockStatus[]).filter((l) => l.isLocked).length === 0 ? (
               <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
                 <p className="font-bold text-slate-700 text-xs">
@@ -687,22 +687,22 @@ export const AccessControlManagement: React.FC<AccessControlManagementProps> = (
               </div>
             ) : (
               <div className="space-y-3">
-                {Object.values(lockStatuses)
+                {(Object.values(lockStatuses) as UserLockStatus[])
                   .filter((l) => l.isLocked)
                   .map((lock) => (
                     <div
-                      key={lock.email}
+                      key={lock.login || lock.email || 'user'}
                       className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-3 text-xs"
                     >
                       <div>
-                        <div className="font-bold text-rose-950 font-mono">{lock.email}</div>
+                        <div className="font-bold text-rose-950 font-mono">{lock.login || lock.email}</div>
                         <div className="text-[11px] text-rose-700">
                           {lock.failedAttempts} tentativas incorretas registradas
                         </div>
                       </div>
 
                       <button
-                        onClick={() => handleUnlockUserAccount(lock.email)}
+                        onClick={() => handleUnlockUserAccount(lock.login || lock.email || '')}
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1 shadow-xs"
                       >
                         <Unlock className="w-3.5 h-3.5" />

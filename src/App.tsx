@@ -51,11 +51,15 @@ function integrateEmployeesIntoSystemUsers(
     const uId = u.id.toLowerCase();
     const uWithoutSu = uId.replace(/^su-/, '');
     const uEmail = u.email ? u.email.toLowerCase().trim() : '';
+    const uLogin = u.login ? u.login.toLowerCase().trim() : '';
+    const uNome = u.nome ? u.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
     return (
       !deletedIds.has(uId) &&
       !deletedIds.has(uWithoutSu) &&
       !deletedIds.has(`su-${uWithoutSu}`) &&
-      (!uEmail || !deletedIds.has(uEmail))
+      (!uEmail || !deletedIds.has(uEmail)) &&
+      (!uLogin || !deletedIds.has(uLogin)) &&
+      (!uNome || !deletedIds.has(uNome))
     );
   });
 
@@ -64,24 +68,9 @@ function integrateEmployeesIntoSystemUsers(
     const suKey = `su-${emp.id}`.toLowerCase();
     const withoutSuKey = empIdKey.replace(/^su-/, '');
     const empEmailKey = emp.email ? emp.email.toLowerCase().trim() : '';
-
-    // Se o usuário foi expressamente excluído pelo administrador, não recria
-    if (
-      deletedIds.has(empIdKey) ||
-      deletedIds.has(suKey) ||
-      deletedIds.has(withoutSuKey) ||
-      (empEmailKey && deletedIds.has(empEmailKey))
-    ) {
-      return;
-    }
-
-    const idx = updatedUsers.findIndex(
-      (u) =>
-        u.id.toLowerCase() === empIdKey ||
-        u.id.toLowerCase() === suKey ||
-        u.id.toLowerCase().replace(/^su-/, '') === withoutSuKey ||
-        (u.email && emp.email && u.email.toLowerCase().trim() === empEmailKey)
-    );
+    const cleanEmpName = emp.nome
+      ? emp.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim()
+      : '';
 
     const cleanLogin =
       emp.nome
@@ -92,6 +81,35 @@ function integrateEmployeesIntoSystemUsers(
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]/g, '') || `user_${emp.matricula.replace(/[^0-9]/g, '')}`;
+
+    // Se o usuário foi expressamente excluído pelo administrador, não recria
+    if (
+      deletedIds.has(empIdKey) ||
+      deletedIds.has(suKey) ||
+      deletedIds.has(withoutSuKey) ||
+      (empEmailKey && deletedIds.has(empEmailKey)) ||
+      (cleanLogin && deletedIds.has(cleanLogin.toLowerCase())) ||
+      (cleanEmpName && deletedIds.has(cleanEmpName))
+    ) {
+      return;
+    }
+
+    const idx = updatedUsers.findIndex((u) => {
+      const uId = u.id.toLowerCase();
+      const uWithoutSu = uId.replace(/^su-/, '');
+      const uEmail = u.email ? u.email.toLowerCase().trim() : '';
+      const uLogin = u.login ? u.login.toLowerCase().trim() : '';
+      const uNome = u.nome ? u.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+
+      return (
+        uId === empIdKey ||
+        uId === suKey ||
+        uWithoutSu === withoutSuKey ||
+        (uEmail && empEmailKey && uEmail === empEmailKey) ||
+        (uLogin && cleanLogin && uLogin === cleanLogin) ||
+        (uNome && cleanEmpName && uNome === cleanEmpName)
+      );
+    });
 
     let accessLevel: SystemUser['nivelAcesso'] = 'Visualização Restrita';
     if (emp.categoria === 'Enfermeiro(a)') {
@@ -107,13 +125,18 @@ function integrateEmployeesIntoSystemUsers(
     }
 
     const defaultSenha = emp.categoria === 'Enfermeiro(a)' ? 'enfermeira123' : 'hmwg123';
-    // Prioriza a senha já existente/editada em systemUsers para não ser sobrescrita pelo quadro de funcionários
-    const finalSenha =
-      idx >= 0 && updatedUsers[idx].senha
-        ? String(updatedUsers[idx].senha)
-        : emp.senha
-        ? String(emp.senha)
-        : defaultSenha;
+    // Se o funcionário teve sua senha definida/alterada, ela deve ter prioridade máxima
+    let finalSenha = defaultSenha;
+    if (emp.senha && emp.senha.trim()) {
+      finalSenha = emp.senha.trim();
+    } else if (idx >= 0 && updatedUsers[idx].senha && updatedUsers[idx].senha.trim()) {
+      finalSenha = updatedUsers[idx].senha.trim();
+    }
+
+    // Mantém a senha sincronizada no próprio objeto funcionário se tiver vindo de usuário
+    if (!emp.senha && finalSenha) {
+      emp.senha = finalSenha;
+    }
 
     const targetUser: SystemUser = {
       id: idx >= 0 ? updatedUsers[idx].id : `su-${emp.id}`,
@@ -352,20 +375,15 @@ export default function App() {
           const validCloudEmps = data.employees.filter((e) => {
             const eId = e.id.toLowerCase();
             const eEmail = e.email ? e.email.toLowerCase().trim() : '';
-            return !deletedIds.has(eId) && !deletedIds.has(`su-${eId}`) && (!eEmail || !deletedIds.has(eEmail));
+            const eNome = e.nome ? e.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+            return !deletedIds.has(eId) && !deletedIds.has(`su-${eId}`) && (!eEmail || !deletedIds.has(eEmail)) && (!eNome || !deletedIds.has(eNome));
           });
 
+          // A planilha Google é a fonte da verdade oficial: aplica os funcionários válidos sem ressuscitar excluídos
           if (Date.now() - lastLocalMutationTime.current >= 30000 || !isSilent) {
-            const currentLocal = Storage.getEmployees();
-            const cloudIds = new Set(validCloudEmps.map((e) => e.id));
-            const unsavedLocal = currentLocal.filter((e) => !cloudIds.has(e.id) && !deletedIds.has(e.id.toLowerCase()));
-            const merged = [...validCloudEmps, ...unsavedLocal];
-            currentEffectiveEmps = merged;
-            setEmployees(merged);
-            Storage.saveEmployees(merged);
-            if (unsavedLocal.length > 0) {
-              hasMutation.current = true;
-            }
+            currentEffectiveEmps = validCloudEmps;
+            setEmployees(validCloudEmps);
+            Storage.saveEmployees(validCloudEmps);
           }
         }
         if (data.shifts && data.shifts.length > 0) setShifts(data.shifts);
@@ -381,11 +399,15 @@ export default function App() {
           const validCloudUsers = data.systemUsers.filter((u) => {
             const uId = u.id.toLowerCase();
             const uEmail = u.email ? u.email.toLowerCase().trim() : '';
-            return !deletedIdsNow.has(uId) && (!uEmail || !deletedIdsNow.has(uEmail));
+            const uLogin = u.login ? u.login.toLowerCase().trim() : '';
+            const uNome = u.nome ? u.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+            return !deletedIdsNow.has(uId) && (!uEmail || !deletedIdsNow.has(uEmail)) && (!uLogin || !deletedIdsNow.has(uLogin)) && (!uNome || !deletedIdsNow.has(uNome));
           });
 
-          // A planilha Google é a fonte da verdade: aplica sempre os usuários válidos da nuvem
-          currentEffectiveSysUsers = validCloudUsers;
+          // A planilha Google é a fonte da verdade, mas protege edições locais recentes (30s)
+          if (Date.now() - lastLocalMutationTime.current >= 30000 || !isSilent) {
+            currentEffectiveSysUsers = validCloudUsers;
+          }
         }
 
         // Integração completa: todos os funcionários com senhas da planilha refletem em Acessos & Senhas
@@ -887,6 +909,9 @@ export default function App() {
 
     // Sincronização automática com Usuários do Sistema (login e senha)
     if (savedEmp.senha) {
+      const cleanEmpName = savedEmp.nome
+        ? savedEmp.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim()
+        : '';
       const cleanLogin =
         savedEmp.nome
           .toLowerCase()
@@ -898,12 +923,19 @@ export default function App() {
           .replace(/[^a-z0-9]/g, '') || `user_${savedEmp.matricula.replace(/[^0-9]/g, '')}`;
 
       const currentSysUsers = Storage.getSystemUsers();
-      const existingUserIdx = currentSysUsers.findIndex(
-        (u) =>
-          u.id === savedEmp.id ||
-          u.id === `su-${savedEmp.id}` ||
-          (u.email && u.email.toLowerCase() === savedEmp.email.toLowerCase())
-      );
+      const existingUserIdx = currentSysUsers.findIndex((u) => {
+        const uId = u.id.toLowerCase();
+        const uNome = u.nome ? u.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+        const uLogin = u.login ? u.login.toLowerCase().trim() : '';
+        return (
+          uId === savedEmp.id.toLowerCase() ||
+          uId === `su-${savedEmp.id}`.toLowerCase() ||
+          uId.replace(/^su-/, '') === savedEmp.id.toLowerCase().replace(/^su-/, '') ||
+          (u.email && savedEmp.email && u.email.toLowerCase().trim() === savedEmp.email.toLowerCase().trim()) ||
+          (uLogin && cleanLogin && uLogin === cleanLogin) ||
+          (uNome && cleanEmpName && uNome === cleanEmpName)
+        );
+      });
 
       let accessLevel: SystemUser['nivelAcesso'] = 'Visualização Restrita';
       if (savedEmp.categoria === 'Enfermeiro(a)') {
@@ -980,13 +1012,22 @@ export default function App() {
     Storage.saveTechnicians(updatedTechs);
     setTechnicians(updatedTechs);
 
+    const targetEmpCleanName = targetEmp?.nome
+      ? targetEmp.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim()
+      : '';
+
     const currentSysUsers = Storage.getSystemUsers();
-    const updatedSysUsers = currentSysUsers.filter(
-      (u) =>
-        u.id !== employeeId &&
-        u.id !== `su-${employeeId}` &&
-        (!targetEmp || u.email.toLowerCase() !== targetEmp.email.toLowerCase())
-    );
+    const updatedSysUsers = currentSysUsers.filter((u) => {
+      const uId = u.id.toLowerCase();
+      const uNome = u.nome ? u.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+      return (
+        uId !== employeeId.toLowerCase() &&
+        uId !== `su-${employeeId}`.toLowerCase() &&
+        uId.replace(/^su-/, '') !== employeeId.toLowerCase().replace(/^su-/, '') &&
+        (!targetEmp || !targetEmp.email || u.email.toLowerCase().trim() !== targetEmp.email.toLowerCase().trim()) &&
+        (!targetEmpCleanName || uNome !== targetEmpCleanName)
+      );
+    });
     if (updatedSysUsers.length !== currentSysUsers.length) {
       Storage.saveSystemUsers(updatedSysUsers);
       setSystemUsers(updatedSysUsers);
@@ -997,8 +1038,12 @@ export default function App() {
     // Registra como excluído para que o background sync nunca mais o ressuscite
     Storage.addDeletedSystemUserId(employeeId);
     Storage.addDeletedSystemUserId(`su-${employeeId}`);
+    Storage.addDeletedSystemUserId(employeeId.replace(/^emp-/, ''));
     if (targetEmp?.email) {
       Storage.addDeletedSystemUserId(targetEmp.email);
+    }
+    if (targetEmpCleanName) {
+      Storage.addDeletedSystemUserId(targetEmpCleanName);
     }
 
     try {
@@ -1006,6 +1051,7 @@ export default function App() {
         // Exclusões diretas nas 4 tabelas
         await Promise.allSettled([
           Storage.deleteEmployeeCloud(employeeId),
+          Storage.deleteEmployeeCloud(`emp-${employeeId}`),
           Storage.deleteNurseCloud(employeeId),
           Storage.deleteTechnicianCloud(employeeId),
           Storage.deleteSystemUserCloud(`su-${employeeId}`),
@@ -1098,13 +1144,23 @@ export default function App() {
 
     // Sincroniza a senha também com o quadro de funcionários e enfermeiros se existir correspondente
     const currentEmployees = Storage.getEmployees();
-    const matchedEmp = currentEmployees.find(
-      (e) =>
-        e.id === savedUser.id ||
-        `su-${e.id}` === savedUser.id ||
-        e.id === savedUser.id.replace(/^su-/, '') ||
-        (savedUser.email && e.email?.toLowerCase().trim() === savedUser.email.toLowerCase().trim())
-    );
+    const cleanUserLogin = savedUser.login?.toLowerCase().trim();
+    const cleanUserName = savedUser.nome
+      ? savedUser.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim()
+      : '';
+
+    const matchedEmp = currentEmployees.find((e) => {
+      const eId = e.id.toLowerCase();
+      const eNome = e.nome ? e.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+      return (
+        eId === savedUser.id.toLowerCase() ||
+        `su-${eId}` === savedUser.id.toLowerCase() ||
+        eId === savedUser.id.toLowerCase().replace(/^su-/, '') ||
+        (savedUser.email && e.email && e.email.toLowerCase().trim() === savedUser.email.toLowerCase().trim()) ||
+        (cleanUserLogin && eNome && eNome.includes(cleanUserLogin)) ||
+        (cleanUserName && eNome && eNome === cleanUserName)
+      );
+    });
     let updatedEmps: Employee[] = currentEmployees;
     if (matchedEmp) {
       updatedEmps = currentEmployees.map((e) =>
@@ -1115,13 +1171,17 @@ export default function App() {
     }
 
     const currentNurses = Storage.getNurses();
-    const matchedNurse = currentNurses.find(
-      (n) =>
-        n.id === savedUser.id ||
-        `su-${n.id}` === savedUser.id ||
-        n.id === savedUser.id.replace(/^su-/, '') ||
-        (savedUser.email && n.email?.toLowerCase().trim() === savedUser.email.toLowerCase().trim())
-    );
+    const matchedNurse = currentNurses.find((n) => {
+      const nId = n.id.toLowerCase();
+      const nNome = n.nome ? n.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+      return (
+        nId === savedUser.id.toLowerCase() ||
+        `su-${nId}` === savedUser.id.toLowerCase() ||
+        nId === savedUser.id.toLowerCase().replace(/^su-/, '') ||
+        (savedUser.email && n.email && n.email.toLowerCase().trim() === savedUser.email.toLowerCase().trim()) ||
+        (cleanUserName && nNome && nNome === cleanUserName)
+      );
+    });
     let updatedNurses: Nurse[] = currentNurses;
     if (matchedNurse) {
       updatedNurses = currentNurses.map((n) =>
@@ -1169,25 +1229,41 @@ export default function App() {
     Storage.saveSystemUsers(updated);
     setSystemUsers(updated);
 
+    const targetUserCleanName = targetUser?.nome
+      ? targetUser.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim()
+      : '';
+    const targetUserLogin = targetUser?.login?.toLowerCase().trim();
+
     // Marca como excluído com todas as variações de chaves
     Storage.addDeletedSystemUserId(userId);
     Storage.addDeletedSystemUserId(userId.replace(/^su-/, ''));
     if (targetUser?.email) Storage.addDeletedSystemUserId(targetUser.email);
+    if (targetUserLogin) Storage.addDeletedSystemUserId(targetUserLogin);
+    if (targetUserCleanName) Storage.addDeletedSystemUserId(targetUserCleanName);
 
     // Se o usuário excluído for também um funcionário no quadro, remove o cadastro dele das listas
     const currentEmployees = Storage.getEmployees();
-    const matchedEmp = currentEmployees.find(
-      (e) =>
-        e.id === userId ||
-        `su-${e.id}` === userId ||
-        e.id === userId.replace(/^su-/, '') ||
-        (targetUser?.email && e.email?.toLowerCase().trim() === targetUser.email.toLowerCase().trim())
-    );
+    const matchedEmp = currentEmployees.find((e) => {
+      const eId = e.id.toLowerCase();
+      const eNome = e.nome ? e.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+      return (
+        eId === userId.toLowerCase() ||
+        `su-${eId}` === userId.toLowerCase() ||
+        eId === userId.toLowerCase().replace(/^su-/, '') ||
+        (targetUser?.email && e.email && e.email.toLowerCase().trim() === targetUser.email.toLowerCase().trim()) ||
+        (targetUserLogin && eNome && eNome.includes(targetUserLogin)) ||
+        (targetUserCleanName && eNome && eNome === targetUserCleanName)
+      );
+    });
     let updatedEmps: Employee[] = currentEmployees;
     if (matchedEmp) {
       Storage.addDeletedSystemUserId(matchedEmp.id);
       Storage.addDeletedSystemUserId(`su-${matchedEmp.id}`);
       if (matchedEmp.email) Storage.addDeletedSystemUserId(matchedEmp.email);
+      const matchedEmpName = matchedEmp.nome
+        ? matchedEmp.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim()
+        : '';
+      if (matchedEmpName) Storage.addDeletedSystemUserId(matchedEmpName);
 
       updatedEmps = currentEmployees.filter((e) => e.id !== matchedEmp.id);
       Storage.saveEmployees(updatedEmps);
@@ -1195,18 +1271,26 @@ export default function App() {
     }
 
     const currentNurses = Storage.getNurses();
-    const matchedNurse = currentNurses.find(
-      (n) =>
-        n.id === userId ||
-        `su-${n.id}` === userId ||
-        n.id === userId.replace(/^su-/, '') ||
-        (targetUser?.email && n.email?.toLowerCase().trim() === targetUser.email.toLowerCase().trim())
-    );
+    const matchedNurse = currentNurses.find((n) => {
+      const nId = n.id.toLowerCase();
+      const nNome = n.nome ? n.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim() : '';
+      return (
+        nId === userId.toLowerCase() ||
+        `su-${nId}` === userId.toLowerCase() ||
+        nId === userId.toLowerCase().replace(/^su-/, '') ||
+        (targetUser?.email && n.email && n.email.toLowerCase().trim() === targetUser.email.toLowerCase().trim()) ||
+        (targetUserCleanName && nNome && nNome === targetUserCleanName)
+      );
+    });
     let updatedNurses: Nurse[] = currentNurses;
     if (matchedNurse) {
       Storage.addDeletedSystemUserId(matchedNurse.id);
       Storage.addDeletedSystemUserId(`su-${matchedNurse.id}`);
       if (matchedNurse.email) Storage.addDeletedSystemUserId(matchedNurse.email);
+      const matchedNurseName = matchedNurse.nome
+        ? matchedNurse.nome.toLowerCase().replace(/^(enf\.|téc\.|dr\.|dra\.)\s+/i, '').trim()
+        : '';
+      if (matchedNurseName) Storage.addDeletedSystemUserId(matchedNurseName);
 
       updatedNurses = currentNurses.filter((n) => n.id !== matchedNurse.id);
       Storage.saveNurses(updatedNurses);

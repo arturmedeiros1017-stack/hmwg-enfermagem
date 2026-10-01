@@ -251,7 +251,7 @@ export interface AccessLog {
   id: string;
   dataHora: string;
   usuarioNome: string;
-  usuarioLogin: string;
+  usuarioLogin?: string;
   usuarioEmail?: string;
   tipoEvento:
     | 'LOGIN_SUCESSO'
@@ -266,6 +266,7 @@ export interface AccessLog {
 
 export interface UserLockStatus {
   login: string;
+  email?: string;
   failedAttempts: number;
   isLocked: boolean;
   lockedUntil?: string; // ISO string

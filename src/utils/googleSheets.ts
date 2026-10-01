@@ -52,7 +52,13 @@ async function request(action: string, sheet: string, params: Record<string, any
     throw new Error(`Erro na requisição: ${response.status}`);
   }
 
-  return response.json();
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    console.warn(`[GS GET] Resposta não-JSON para ${action} (${sheet}):`, text.substring(0, 150));
+    return { data: [], error: 'Resposta inválida' };
+  }
 }
 
 async function requestPost(action: string, sheet: string, data: any): Promise<any> {
